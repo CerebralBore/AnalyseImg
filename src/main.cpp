@@ -8,19 +8,21 @@ using namespace std;
 
 string demanderImage();
 
-void calculGradient(cv::Mat& img);
+void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente);
+cv::Mat seuillage(cv::Mat img, int type);
 cv::Mat norme(cv::Mat img);
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 std::vector<cv::Mat> usedFilteredImg;
-cv::Mat module;
-cv::Mat pente;
 
 int main()
 {
     string cheminRepImg, cheminImage;
     cv::Mat imgO;
+    cv::Mat module;
+    cv::Mat pente;
+
     bool bonChemin;
 
     double m2_1[3][3] = {{-1, 0, 1}, {-1, 0, 1}, {-1, 0, 1}};
@@ -57,7 +59,6 @@ int main()
     usedFilter = prewittFilter;
 
 
-
     char key = '-';
     while (key != 'q' && key != 'Q')
     {
@@ -77,12 +78,27 @@ int main()
                 bonChemin = true;
         }
 
+
+        module = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
+        pente = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
+
         equalizeHist(imgO, imgO);
-        calculGradient(imgO);
 
         cv::imshow("Image original", imgO);
         cvWaitKey();
-        cv::imshow("module", norme(module));
+
+        calculGradient(imgO, module, pente);
+
+        module = norme(module);
+        pente = norme(pente);
+
+        cv::imshow("module", module);
+        cv::imshow("pente", pente);
+
+        module = seuillage(module, 0);
+
+
+        cv::imshow("module seuille", module);
 
         cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << endl;
         key = '-';
@@ -91,6 +107,9 @@ int main()
         cvDestroyAllWindows();
 
         cout << endl << "-----------------------------------------------------------------" << endl << endl;
+
+        usedFilteredImg.clear();
+
     }
 }
 
@@ -111,7 +130,7 @@ cv::Mat norme(cv::Mat img)
     // Normage de l'image pour avoir des valeurs entre [O, 255]
     for (int i = 0; i < img.rows ; i++) {
         for(int j = 0; j < img.cols ; j++) {
-            img_out.at<uchar>(i, j) = round(((img.at<double>(i, j)-min)/(max-min)) * 255);
+            img_out.at<uchar>(i, j) = round(((img.at<double>(i, j) - min) / ( max - min)) * 255);
             //if(round(((img.at<double>(i, j)-min)/(max-min)) * 255) > 0)std::cout << round(((img.at<double>(i, j)-min)/(max-min)) * 255) << std::endl;
         }
     }
@@ -122,33 +141,18 @@ cv::Mat norme(cv::Mat img)
 
 #define GRADIENT_MAX 0
 #define GRADIENT_SUM 1
-void calculGradient(cv::Mat& img)
+void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
 {
     int modeCalculGradient = 1;
     int nbDirection = 2;
     int angle = 180/nbDirection;
 
-
-    module = cv::Mat(img.rows, img.cols, CV_64FC1);
-    pente = cv::Mat(img.rows, img.cols, CV_64FC1);
+    cv::imshow("img ", img);
 
     usedFilteredImg.push_back(applyFilter(img, usedFilter[0]));
     usedFilteredImg.push_back(applyFilter(img, usedFilter[1]));
     usedFilteredImg.push_back(applyFilter(img, usedFilter[2]));
     usedFilteredImg.push_back(applyFilter(img, usedFilter[3]));
-
-
-    cv::imshow("usedFilteredImg 0 ", norme(usedFilteredImg[0]));
-    cv::imshow("usedFilteredImg 1 ", norme(usedFilteredImg[1]));
-    cvWaitKey();
-
-    std::cout << "usedFilteredImg[0].rows = " << usedFilteredImg[0].rows << "   usedFilteredImg[0].cols = " << usedFilteredImg[0].cols << std::endl;
-/*
-    for(int i = 0 ; i < img.rows ; i++)
-        for(int j = 0 ; j < img.cols ; j++)
-            if(usedFilteredImg[0].at<double>(i,j) > 1) std::cout << usedFilteredImg[0].at<double>(i,j) << "    ";
-    */
-
 
     switch(modeCalculGradient)
     {
@@ -219,6 +223,37 @@ void calculGradient(cv::Mat& img)
 
 }
 
+cv::Mat seuillage(cv::Mat img, int type)
+{
+
+    cv::Mat img_out(img.rows, img.cols, CV_64FC1);
+
+    switch(type)
+    {
+        case 0 :    // seuillage simple
+                    for (int i = 0; i < img.rows ; i++) {
+                        for(int j = 0; j < img.cols ; j++) {
+                            if (img.at<double>(i, j) > 150)
+                                img_out.at<double>(i, j) = img.at<double>(i, j);
+                            else img_out.at<double>(i, j) = 0;
+                        }
+                    }
+                    break;
+        case 1 :    // seuillage global
+                    break;
+        case 2 :    // seuillage local
+                    break;
+        case 3 :    //seuillage hysteresis
+                    break;
+        default:
+                    break;
+
+    }
+
+    return img_out;
+
+}
+
 string demanderImage()
 {
 
@@ -268,7 +303,6 @@ string demanderImage()
         }
         cout << "Le numero d'image choisit n'existe pas. " << tmp << " Re-essayez : " << endl;
     }
-
 }
 
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre)
