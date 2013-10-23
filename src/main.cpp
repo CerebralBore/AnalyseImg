@@ -22,6 +22,7 @@ int main()
     cv::Mat imgO;
     cv::Mat module;
     cv::Mat pente;
+    cv::Mat seuilSimple;
 
     bool bonChemin;
 
@@ -81,6 +82,7 @@ int main()
 
         module = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
         pente = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
+        seuilSimple = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
 
         equalizeHist(imgO, imgO);
 
@@ -89,16 +91,15 @@ int main()
 
         calculGradient(imgO, module, pente);
 
+        seuilSimple = seuillage(module, 2);
+
         module = norme(module);
         pente = norme(pente);
 
         cv::imshow("module", module);
         cv::imshow("pente", pente);
 
-        module = seuillage(module, 0);
-
-
-        cv::imshow("module seuille", module);
+        cv::imshow("module seuille", seuilSimple);
 
         cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << endl;
         key = '-';
@@ -144,7 +145,7 @@ cv::Mat norme(cv::Mat img)
 void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
 {
     int modeCalculGradient = 1;
-    int nbDirection = 2;
+    int nbDirection = 4;
     int angle = 180/nbDirection;
 
     cv::imshow("img ", img);
@@ -225,14 +226,22 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
 
 cv::Mat seuillage(cv::Mat img, int type)
 {
-
     cv::Mat img_out(img.rows, img.cols, CV_64FC1);
+    int valCumule = 0;
+    double seuil;
+    double valeurMin = 255;
+    double valeurMax = 0;
+    int xMin, yMin, xMax, yMax, nouvelleLargeur, nouvelleHauteur;
+    int largeur = 3;
+    int hauteur = 3;
 
     switch(type)
     {
         case 0 :    // seuillage simple
-                    for (int i = 0; i < img.rows ; i++) {
-                        for(int j = 0; j < img.cols ; j++) {
+                    for (int i = 0; i < img.rows ; i++)
+                    {
+                        for(int j = 0; j < img.cols ; j++)
+                        {
                             if (img.at<double>(i, j) > 150)
                                 img_out.at<double>(i, j) = img.at<double>(i, j);
                             else img_out.at<double>(i, j) = 0;
@@ -240,8 +249,57 @@ cv::Mat seuillage(cv::Mat img, int type)
                     }
                     break;
         case 1 :    // seuillage global
+                    for(int i = 0; i < img.rows; i++)
+                        for(int j = 0; j < img.cols; j++)
+                        {
+                            valCumule += img.at<double>(i,j);
+                            /*if(img.at<double>(i,j) > valeurMax)
+                                valeurMax = img.at<double>(i,j);
+                            if(img.at<double>(i,j) < valeurMin)
+                                valeurMin = img.at<double>(i,j);*/
+                        }
+                    /*seuilGlobal = (valeurMax + valeurMin) / 2;
+                    std::cout << "valeurMin " << valeurMin << std::endl;
+                    std::cout << "valeurMax " << valeurMax << std::endl;*/
+                    seuil = valCumule / (img.rows * img.cols);
+                    std::cout << "seuilGlobal " << seuil << std::endl;
+
+                    for (int i = 0; i < img.rows ; i++)
+                    {
+                        for(int j = 0; j < img.cols ; j++)
+                        {
+                            if (img.at<double>(i, j) > seuil)
+                                img_out.at<double>(i, j) = img.at<double>(i, j);
+                            else img_out.at<double>(i, j) = 0;
+                        }
+                    }
                     break;
         case 2 :    // seuillage local
+                    for(int i = 0; i < img.rows; i++)
+                        for(int j = 0; j < img.cols; j++)
+                        {
+                            valCumule = 0;
+
+                            xMin = j < (largeur / 2) ? 0 : j - (largeur / 2);
+                            yMin = i < (hauteur / 2) ? 0 : i - (hauteur / 2);
+                            xMax = (j + (largeur / 2) >= img.cols) ? img.cols - 1 : j + (largeur / 2);
+                            yMax = (i + (hauteur / 2) >= img.rows) ? img.rows - 1 : i + (hauteur / 2);
+                            //std::cout << "xMin " << xMin << ", yMin " << yMin << ", xMax " << xMax << ", yMax " << yMax << std::endl;
+                            nouvelleLargeur = xMax - xMin + 1;
+                            nouvelleHauteur = yMax - yMin + 1;
+
+                            for(int k = yMin; k < yMax; k++)
+                                for(int l = xMin; l < xMax; l++)
+                                    valCumule += img.at<double>(i,j);
+                            //std::cout << "taille " << nouvelleLargeur * nouvelleHauteur << std::endl;
+
+                            seuil = valCumule / (nouvelleLargeur * nouvelleHauteur);
+
+                            //cv::cout << "seuil " << seuil << std::endl;
+                            if (img.at<double>(i, j) > seuil && seuil > 30)
+                                img_out.at<double>(i, j) = img.at<double>(i, j);
+                            else img_out.at<double>(i, j) = 0;
+                        }
                     break;
         case 3 :    //seuillage hysteresis
                     break;
