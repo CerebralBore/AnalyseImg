@@ -12,6 +12,7 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente);
 cv::Mat seuillage(cv::Mat img, int type);
 cv::Mat norme(cv::Mat img);
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre);
+cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 std::vector<cv::Mat> usedFilteredImg;
@@ -97,9 +98,8 @@ int main()
         pente = norme(pente);
 
         cv::imshow("module", module);
-        cv::imshow("pente", pente);
 
-        cv::imshow("module seuille", seuilSimple);
+        cv::imshow("module seuille", affinage(seuilSimple, pente));
 
         cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << endl;
         key = '-';
@@ -112,6 +112,96 @@ int main()
         usedFilteredImg.clear();
 
     }
+}
+
+cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
+{
+
+    cv::Mat img_out(amplitude.rows, amplitude.cols, CV_64FC1);
+    int ki, kj;
+    for(int i = 0; i < amplitude.rows; i++)
+        for(int j = 0; j < amplitude.cols; j++)
+            img_out.at<double>(i, j) = 0;
+
+
+    for(int i = 0; i < amplitude.rows; i++)
+        for(int j = 0; j < amplitude.cols; j++)
+        {
+            double pix = amplitude.at<double>(i, j);
+            if(pix != 0)
+            {
+                int oo1;
+                oo1 = (int)orientation.at<double>(i, j);
+                switch(oo1) {
+                    case 0:
+                        ki = -1;
+                        kj = 0;
+                        break;
+
+                    case 45:
+                        ki = -1;
+                        kj = 1;
+                        break;
+
+                    case 90:
+                        ki = 0;
+                        kj = 1;
+                        break;
+
+                    case 135:
+                        ki = -1;
+                        kj = -1;
+                        break;
+
+                }
+            }
+
+            cv::Point2i suivant;
+            suivant.x = i + ki;
+            suivant.y = j + kj;
+
+            double max = pix;
+            cv::Point2i pointmax;
+
+            while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
+                   && amplitude.at<double>(suivant.x, suivant.y) > 0 )
+            {
+                if( amplitude.at<double>(suivant.x, suivant.y) > max )
+                {
+                    max = amplitude.at<double>(suivant.x, suivant.y);
+                    pointmax.x = suivant.x;
+                    pointmax.y = suivant.y;
+                }
+
+                suivant.x += ki;
+                suivant.y += kj;
+            }
+
+            ki *= -1;
+            kj *= -1;
+
+            suivant.x = i + ki;
+            suivant.y = j + kj;
+
+            while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
+                   && amplitude.at<double>(suivant.x, suivant.y) > 0 )
+            {
+                if( amplitude.at<double>(suivant.x, suivant.y) > max )
+                {
+                    max = amplitude.at<double>(suivant.x, suivant.y);
+                    pointmax.x = suivant.x;
+                    pointmax.y = suivant.y;
+                }
+
+                suivant.x += ki;
+                suivant.y += kj;
+            }
+
+        img_out.at<double>(pointmax.x, pointmax.y) = max;
+
+        }
+
+    return img_out;
 }
 
 cv::Mat norme(cv::Mat img)
@@ -147,8 +237,6 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
     int modeCalculGradient = 1;
     int nbDirection = 4;
     int angle = 180/nbDirection;
-
-    cv::imshow("img ", img);
 
     usedFilteredImg.push_back(applyFilter(img, usedFilter[0]));
     usedFilteredImg.push_back(applyFilter(img, usedFilter[1]));
