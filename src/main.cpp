@@ -91,7 +91,7 @@ int main()
 
         calculGradient(imgO, module, pente);
 
-        seuilSimple = seuillage(module, 2);
+        seuilSimple = seuillage(module, 3);
 
         module = norme(module);
         pente = norme(pente);
@@ -235,6 +235,12 @@ cv::Mat seuillage(cv::Mat img, int type)
     int largeur = 3;
     int hauteur = 3;
 
+    double sum = 0;
+    double avg = 0;
+    double variance = 0;
+    double seuil_h = 0;
+    double seuil_b = 0;
+
     switch(type)
     {
         case 0 :    // seuillage simple
@@ -302,6 +308,67 @@ cv::Mat seuillage(cv::Mat img, int type)
                         }
                     break;
         case 3 :    //seuillage hysteresis
+
+                    for (int i = 0; i < img.rows ; i++)
+                        for(int j = 0; j < img.cols ; j++)
+                            sum += img.at<double>(i, j);
+
+                    avg = sum / (img.rows*img.cols);
+
+                    // Calcul de la variance
+                    for (int i = 0; i < img.rows ; i++)
+                        for(int j = 0; j < img.cols ; j++)
+                            variance += pow(img.at<double>(i, j) - avg, 2);
+                    variance /= (img.rows * img.cols);
+
+                    seuil_h = avg + sqrt(variance);
+                    seuil_b = MAX(0, avg);
+
+                    //Seuil haut
+                    for (int i = 0; i < img.rows ; i++)
+                        for(int j = 0; j < img.cols ; j++)
+                        {
+                            if (img.at<double>(i, j) > seuil_h)
+                                img_out.at<double>(i, j) = img.at<double>(i, j);
+                            else img_out.at<double>(i, j) = 0;
+                        }
+
+                    //Seuil bas
+                    for (int i = 0 ; i < img.rows ; i++)
+                        for (int j = 0 ; j < img.cols ; j++)
+                        {
+                            int ki;
+                            ki = i - 3/2;
+                            int imin = (ki < 0)? 0 : ki;
+                            ki = i + 3/2;
+                            int imax = (ki > img.rows) ? img.rows : ki;
+
+                            int kj;
+                            kj = j - 3/2;
+                            int jmin = (kj < 0) ? 0 : kj;
+                            kj = j + 3/2;
+                            int jmax = (kj > img.cols) ? img.cols : kj;
+
+                            if (img.at<double>(i, j) > seuil_b)
+                            {
+                                ki = imin;
+                                while (ki <= imax)
+                                {
+                                    kj = jmin;
+                                    while (kj <= jmax)
+                                    {
+                                        if (img_out.at<double>(ki, kj) != 0)
+                                        {
+                                            img_out.at<double>(i, j) = img.at<double>(i, j);
+                                            break;
+                                        }
+                                        kj++;
+                                    }
+                                    ki++;
+                                }
+                            }
+                            else img_out.at<double>(i, j) = 0;
+                        }
                     break;
         default:
                     break;
