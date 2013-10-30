@@ -8,7 +8,7 @@ using namespace std;
 
 string demanderImage();
 
-void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente);
+void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection);
 cv::Mat seuillage(cv::Mat img, int type);
 cv::Mat norme(cv::Mat img);
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre);
@@ -20,10 +20,12 @@ std::vector<cv::Mat> usedFilteredImg;
 int main()
 {
     string cheminRepImg, cheminImage;
-    cv::Mat imgO;
+    cv::Mat img;
     cv::Mat module;
     cv::Mat pente;
-    cv::Mat seuilSimple;
+    cv::Mat moduleSeuille;
+    cv::Mat moduleAffinage;
+    cv::Mat contours;
 
     bool bonChemin;
 
@@ -72,34 +74,40 @@ int main()
             cheminImage = cheminRepImg;
             cheminImage += demanderImage();
 
-            imgO = cv::imread (cheminImage, CV_LOAD_IMAGE_GRAYSCALE);
+            img = cv::imread (cheminImage, CV_LOAD_IMAGE_GRAYSCALE);
 
-            if (imgO.empty ())
+            if (img.empty ())
                 cerr << "Mauvais chemin d'image: " << cheminImage << endl;
             else
                 bonChemin = true;
         }
 
 
-        module = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
-        pente = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
-        seuilSimple = cv::Mat(imgO.rows, imgO.cols, CV_64FC1);
+        module = cv::Mat(img.rows, img.cols, CV_64FC1);
+        pente = cv::Mat(img.rows, img.cols, CV_64FC1);
+        moduleSeuille = cv::Mat(img.rows, img.cols, CV_64FC1);
+        moduleAffinage = cv::Mat(img.rows, img.cols, CV_64FC1);
+        contours = cv::Mat(img.rows, img.cols, CV_64FC1);
 
-        equalizeHist(imgO, imgO);
+        equalizeHist(img, img);
 
-        cv::imshow("Image original", imgO);
-        cvWaitKey();
+        calculGradient(img, module, pente, 0, 2);
 
-        calculGradient(imgO, module, pente);
+        moduleSeuille = seuillage(module, 3);
 
-        seuilSimple = seuillage(module, 3);
+        moduleAffinage = affinage (moduleSeuille, pente);
 
-        module = norme(module);
-        pente = norme(pente);
+        //contours = generation_contours(moduleAffinage, module, pente);
 
-        cv::imshow("module", module);
 
-        cv::imshow("module seuille", affinage(seuilSimple, pente));
+
+        cv::imshow("Image original", img);
+
+        cv::imshow("module", norme(module));
+
+        cv::imshow("module seuille", moduleSeuille);
+
+        cv::imshow("module Affine", moduleAffinage);
 
         cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << endl;
         key = '-';
@@ -116,9 +124,9 @@ int main()
 
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
 {
-
     cv::Mat img_out(amplitude.rows, amplitude.cols, CV_64FC1);
     int ki, kj;
+    int toto = 0;
     for(int i = 0; i < amplitude.rows; i++)
         for(int j = 0; j < amplitude.cols; j++)
             img_out.at<double>(i, j) = 0;
@@ -130,9 +138,14 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
             double pix = amplitude.at<double>(i, j);
             if(pix != 0)
             {
-                int oo1;
-                oo1 = (int)orientation.at<double>(i, j);
-                switch(oo1) {
+                int angle;
+                angle = (int)orientation.at<double>(i, j);
+                if(angle < 45/2) angle = 0;
+                else if (angle < 90 - (45 / 2)) angle = 45;
+                else if (angle < 135 - (45 / 2)) angle = 90;
+                else angle = 135;
+                switch(angle)
+                {
                     case 0:
                         ki = -1;
                         kj = 0;
@@ -152,6 +165,8 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
                         ki = -1;
                         kj = -1;
                         break;
+                default: //std::cout << angle << " ";
+                         break;
 
                 }
             }
@@ -163,6 +178,7 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
             double max = pix;
             cv::Point2i pointmax;
 
+            //on parcourt dans un sens
             while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
                    && amplitude.at<double>(suivant.x, suivant.y) > 0 )
             {
@@ -177,12 +193,10 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
                 suivant.y += kj;
             }
 
-            ki *= -1;
-            kj *= -1;
+            suivant.x = i - ki;
+            suivant.y = j - kj;
 
-            suivant.x = i + ki;
-            suivant.y = j + kj;
-
+            //puis dans l'autre
             while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
                    && amplitude.at<double>(suivant.x, suivant.y) > 0 )
             {
@@ -193,13 +207,14 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
                     pointmax.y = suivant.y;
                 }
 
-                suivant.x += ki;
-                suivant.y += kj;
+                suivant.x -= ki;
+                suivant.y -= kj;
             }
 
         img_out.at<double>(pointmax.x, pointmax.y) = max;
 
         }
+    std::cout << toto << std::endl;
 
     return img_out;
 }
@@ -232,11 +247,9 @@ cv::Mat norme(cv::Mat img)
 
 #define GRADIENT_MAX 0
 #define GRADIENT_SUM 1
-void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
+void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection)
 {
-    int modeCalculGradient = 1;
-    int nbDirection = 4;
-    int angle = 180/nbDirection;
+    int angle = 180 / nbDirection;
 
     usedFilteredImg.push_back(applyFilter(img, usedFilter[0]));
     usedFilteredImg.push_back(applyFilter(img, usedFilter[1]));
@@ -246,67 +259,69 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente)
     switch(modeCalculGradient)
     {
         case GRADIENT_SUM:
-            for(int i = 0 ; i < img.rows ; i++) {
-                for(int j = 0 ; j < img.cols ; j++) {
-                    double ksomme = 0;
-                    int kmax = 0;
-                    for(int k = 0 ; k < nbDirection ; k++) {
-                        ksomme += usedFilteredImg[k].at<double>(i, j);
-                        if(usedFilteredImg[k].at<double>(i, j) > usedFilteredImg[kmax].at<double>(i, j)) {
-                            kmax = k;
+                            for(int i = 0 ; i < img.rows ; i++)
+                            {
+                                for(int j = 0 ; j < img.cols ; j++)
+                                {
+                                    double ksomme = 0;
+                                    int kmax = 0;
+                                    for(int k = 0 ; k < nbDirection ; k++) {
+                                        ksomme += usedFilteredImg[k].at<double>(i, j);
+                                        if(usedFilteredImg[k].at<double>(i, j) > usedFilteredImg[kmax].at<double>(i, j)) {
+                                            kmax = k;
+                                        }
+                                    }
+                                    module.at<double>(i, j) = ksomme / nbDirection;
+                                    //module.at<double>(i, j) = usedFilteredImg[ksomme].at<double>(i, j);
+
+                                    if(nbDirection == 2)
+                                    {
+                                        double angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
+                                        angle *= 180 / M_PI;
+                                        //printf("angle %f \n", angle);
+                                        pente.at<double>(i, j) = angle;
+                                    }
+                                    else
+                                        pente.at<double>(i, j) = kmax * angle;
+                                }
+                            }
+                            break;
+
+        case GRADIENT_MAX:
+                        for(int i = 0 ; i < img.rows ; i++)
+                        {
+                            for(int j = 0 ; j < img.cols ; j++)
+                            {
+                                int kmax = 0;
+                                for(int k = 0 ; k < nbDirection ; k++)
+                                    if(usedFilteredImg[k].at<double>(i, j) > usedFilteredImg[kmax].at<double>(i, j))
+                                        kmax = k;
+
+                                module.at<double>(i, j) = usedFilteredImg[kmax].at<double>(i, j);
+
+                                if(nbDirection == 2)
+                                {
+                                    double angle = 90;
+                                    if( usedFilteredImg[0].at<double>(i, j) != 0)
+                                    {
+                                        angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
+                                        angle *= 180 / M_PI;
+                                        //printf("angle %f \n", angle);
+                                        pente.at<double>(i, j) = angle;
+                                     }
+                                    else if (usedFilteredImg[0].at<double>(i, j) == 0)
+                                        angle = 0;
+
+                                    pente.at<double>(i, j) = angle;
+                                }
+                                else
+                                    pente.at<double>(i, j) = kmax * angle;
+                            }
                         }
-                    }
-                    module.at<double>(i, j) = ksomme / nbDirection;
-                    //module.at<double>(i, j) = usedFilteredImg[ksomme].at<double>(i, j);
-
-                    if(nbDirection== 2)
-                    {
-                        double angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
-                        angle *= 180 / M_PI;
-                        //printf("angle %f \n", angle);
-                        pente.at<double>(i, j) = angle;
-                    }
-                    else
-                        pente.at<double>(i, j) = kmax * angle;
-                }
-            }
-            break;
-
-    case GRADIENT_MAX:
-        for(int i = 0 ; i < img.rows ; i++) {
-            for(int j = 0 ; j < img.cols ; j++) {
-                int kmax = 0;
-                for(int k = 0 ; k < nbDirection ; k++) {
-                    if(usedFilteredImg[k].at<double>(i, j) > usedFilteredImg[kmax].at<double>(i, j)) {
-                        kmax = k;
-                    }
-                }
-                module.at<double>(i, j) = usedFilteredImg[kmax].at<double>(i, j);
-
-                if(nbDirection == 2)
-                {
-                    double angle = 90;
-                    if( usedFilteredImg[0].at<double>(i, j) != 0)
-                    {
-                        angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
-                        angle *= 180 / M_PI;
-
-                        //if (angle > 90 )printf("angle %f \n", angle);
-                            pente.at<double>(i, j) = angle;
-                        }
-                        else if (usedFilteredImg[0].at<double>(i, j) == 0)
-                            angle = 0;
-
-                        pente.at<double>(i, j) = angle;
-                    }
-                    else
-                        pente.at<double>(i, j) = kmax * angle;
-                }
-            }
-            break;
+                        break;
 
         default:
-            std::cout << "Mauvais mode de gradient" << std::endl;
+                    std::cout << "Mauvais mode de gradient" << std::endl;
 
     }
 
