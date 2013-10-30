@@ -29,9 +29,9 @@ int main()
 
     bool bonChemin;
 
-    double m2_1[3][3] = {{-1, 0, 1}, {-1, 0, 1}, {-1, 0, 1}};
-    double m2_2[3][3] = {{1, 1, 1}, {0, 0, 0}, {-1, -1,-1}};
-    double m2_3[3][3] = {{1, 1, 0}, {1, 0, -1}, {0, -1, -1}};
+    double m2_1[3][3] = {{-1, -1, -1}, {0, 0, 0}, {1, 1, 1}};
+    double m2_2[3][3] = {{-1, -1, 0}, {-1, 0, 1}, {0, 1, 1}};
+    double m2_3[3][3] = {{-1, 0, 1}, {-1, 0, 1}, {-1, 0, 1}};
     double m2_4[3][3] = {{0, 1, 1}, {-1, 0, 1}, {-1, -1, 0}};
 
     prewittFilter.push_back(cv::Mat(3, 3, CV_64FC1, m2_1));
@@ -39,9 +39,9 @@ int main()
     prewittFilter.push_back(cv::Mat(3, 3, CV_64FC1, m2_3));
     prewittFilter.push_back(cv::Mat(3, 3, CV_64FC1, m2_4));
 
-    double m3_1[3][3] = {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
-    double m3_2[3][3] = {{1, 2, 1}, {0, 0, 0}, {-1, -2, -1}};
-    double m3_3[3][3] = {{2, 1, 0}, {1, 0, -1}, {0, -1, -2}};
+    double m3_1[3][3] = {{-1, -2, -1}, {0, 0, 0}, {1, 2, 1}};
+    double m3_2[3][3] = {{-2, -1, 0}, {-1, 0, 1}, {0, 1, 2}};
+    double m3_3[3][3] = {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
     double m3_4[3][3] = {{0, 1, 2}, {-1, 0, 1}, {-2, -1, 0}};
 
     sobelFilter.push_back(cv::Mat(3, 3, CV_64FC1, m3_1));
@@ -49,9 +49,9 @@ int main()
     sobelFilter.push_back(cv::Mat(3, 3, CV_64FC1, m3_3));
     sobelFilter.push_back(cv::Mat(3, 3, CV_64FC1, m3_4));
 
-    double m4_1[3][3] = {{-3, -3, 5}, {-3, 0, 5}, {-3, -3, 5}};
-    double m4_2[3][3] = {{5, 5, 5}, {-3, 0, -3}, {-3, -3, -3}};
-    double m4_3[3][3] = {{5, 5, -3}, {5, 0, -3}, {-3, -3, -3}};
+    double m4_1[3][3] = {{-3, -3, -3}, {-3, 0, -3}, {5, 5, 5}};
+    double m4_2[3][3] = {{-3, -3, -3}, {-3, 0, 5}, {-3, 5, 5}};
+    double m4_3[3][3] = {{-3, -3, 5}, {-3, 0, 5}, {-3, -3, 5}};
     double m4_4[3][3] = {{-3, 5, 5}, {-3, 0, 5}, {-3, -3, -3}};
 
     kirschFilter.push_back(cv::Mat(3, 3, CV_64FC1, m4_1));
@@ -91,7 +91,7 @@ int main()
 
         equalizeHist(img, img);
 
-        calculGradient(img, module, pente, 0, 2);
+        calculGradient(img, module, pente, 0, 4);
 
         moduleSeuille = seuillage(module, 3);
 
@@ -126,7 +126,6 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
 {
     cv::Mat img_out(amplitude.rows, amplitude.cols, CV_64FC1);
     int ki, kj;
-    int toto = 0;
     for(int i = 0; i < amplitude.rows; i++)
         for(int j = 0; j < amplitude.cols; j++)
             img_out.at<double>(i, j) = 0;
@@ -214,7 +213,6 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
         img_out.at<double>(pointmax.x, pointmax.y) = max;
 
         }
-    std::cout << toto << std::endl;
 
     return img_out;
 }
@@ -276,7 +274,7 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalcu
 
                                     if(nbDirection == 2)
                                     {
-                                        double angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
+                                        double angle = atan( usedFilteredImg[2].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
                                         angle *= 180 / M_PI;
                                         //printf("angle %f \n", angle);
                                         pente.at<double>(i, j) = angle;
@@ -304,7 +302,7 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalcu
                                     double angle = 90;
                                     if( usedFilteredImg[0].at<double>(i, j) != 0)
                                     {
-                                        angle = atan( usedFilteredImg[1].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
+                                        angle = atan( usedFilteredImg[2].at<double>(i, j) / usedFilteredImg[0].at<double>(i, j));
                                         angle *= 180 / M_PI;
                                         //printf("angle %f \n", angle);
                                         pente.at<double>(i, j) = angle;
