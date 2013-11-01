@@ -6,6 +6,10 @@
 
 using namespace std;
 
+struct Contour{
+    vector<cv::Point2i> pix;
+} Contour ;
+
 string demanderImage();
 
 void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection);
@@ -13,9 +17,13 @@ cv::Mat seuillage(cv::Mat img, int type);
 cv::Mat norme(cv::Mat img);
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre);
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation);
+cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours);
+void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 std::vector<cv::Mat> usedFilteredImg;
+
+
 
 int main()
 {
@@ -60,7 +68,7 @@ int main()
     kirschFilter.push_back(cv::Mat(3, 3, CV_64FC1, m4_4));
 
 
-    usedFilter = prewittFilter;
+    usedFilter = sobelFilter;
 
 
     char key = '-';
@@ -120,6 +128,50 @@ int main()
         usedFilteredImg.clear();
 
     }
+}
+
+
+cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours)
+{
+    cv::Mat imgContour(img_seuille.rows, img_seuille.cols, CV_64FC1);
+
+    //init
+    for(int i = 0; i < imgContour.rows; i ++)
+        for(int j = 0; j < imgContour.cols; j++)
+            imgContour.at<double>(i,j) = -1;
+
+    for(int i = 0; i < img_seuille.rows; i ++)
+        for(int j = 0; j < img_seuille.cols; j++)
+        {
+            if(img_seuille.at<double>(i,j) > 0 && imgContour.at<double>(i,j) == -1)
+            {
+                contours.push_back(img_seuille.at<double>(i,j));
+                imgContour.at<double>(i,j) = contours.size();
+                etendre_contour(i, j, img_seuille, orientation, &imgContour, &contours);
+            }
+
+        }
+
+    // fermeture_contours();
+
+    // creation_img_out();
+}
+
+
+void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours)
+{
+    if(i > 0 && j > 0  && img_seuille.at<double>(i-1, j-1) > 0 && imgContour.at<double>(i-1, j-1) == -1)
+    {
+        if((orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) < 23.0)
+            || (orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) > -23.0))
+        {
+            contours[contours.size()].push_back(img_seuille.at<double>(i-1, j-1));
+            imgContour.at<double>(i-1, j-1) = contours.size();
+            etendre_contour(i -1, j -1, , img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    // faire les autres indices
 }
 
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
