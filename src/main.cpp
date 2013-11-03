@@ -3,14 +3,14 @@
 #include <vector>
 #include <math.h>
 #include <string>
-
-using namespace std;
+#include <ctime>
 
 struct Contour{
-    vector<cv::Point2i> pix;
-} Contour ;
+    std::vector<cv::Point2i> pix;
+    std::vector<cv::Point2i> extremites;
+};
 
-string demanderImage();
+std::string demanderImage();
 
 void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection);
 cv::Mat seuillage(cv::Mat img, int type);
@@ -19,21 +19,23 @@ cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre);
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation);
 cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours);
 void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours);
+void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours);
+void amelioration_contours(cv::Mat& imgContour, cv::Mat& orientation, std::vector<Contour>& contours);
+void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 std::vector<cv::Mat> usedFilteredImg;
 
-
-
 int main()
 {
-    string cheminRepImg, cheminImage;
+    std::string cheminRepImg, cheminImage;
     cv::Mat img;
     cv::Mat module;
     cv::Mat pente;
     cv::Mat moduleSeuille;
     cv::Mat moduleAffinage;
-    cv::Mat contours;
+    cv::Mat imgContours;
+    std::vector<Contour> contours;
 
     bool bonChemin;
 
@@ -85,17 +87,16 @@ int main()
             img = cv::imread (cheminImage, CV_LOAD_IMAGE_GRAYSCALE);
 
             if (img.empty ())
-                cerr << "Mauvais chemin d'image: " << cheminImage << endl;
+                std::cerr << "Mauvais chemin d'image: " << cheminImage << std::endl;
             else
                 bonChemin = true;
         }
-
 
         module = cv::Mat(img.rows, img.cols, CV_64FC1);
         pente = cv::Mat(img.rows, img.cols, CV_64FC1);
         moduleSeuille = cv::Mat(img.rows, img.cols, CV_64FC1);
         moduleAffinage = cv::Mat(img.rows, img.cols, CV_64FC1);
-        contours = cv::Mat(img.rows, img.cols, CV_64FC1);
+        imgContours = cv::Mat(img.rows, img.cols, CV_64FC1);
 
         equalizeHist(img, img);
 
@@ -105,9 +106,13 @@ int main()
 
         moduleAffinage = affinage (moduleSeuille, pente);
 
-        //contours = generation_contours(moduleAffinage, module, pente);
+        imgContours = parcours(moduleAffinage, pente, contours);
 
-
+        /*
+        for(int i = 0; i < imgContours.rows; i++)
+            for(int j = 0; j < imgContours.cols; j++)
+                std::cout << imgContours.at<double>(i,j) << " ";
+        */
 
         cv::imshow("Image original", img);
 
@@ -117,61 +122,284 @@ int main()
 
         cv::imshow("module Affine", moduleAffinage);
 
-        cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << endl;
+        cv::imshow("contours", imgContours);
+
+        std::cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << std::endl;
+
+        contours.clear();
+
         key = '-';
         while(key != 'q' && key != 's' && key != 'Q' && key != 'S') key = cvWaitKey(50);
 
         cvDestroyAllWindows();
 
-        cout << endl << "-----------------------------------------------------------------" << endl << endl;
+        std::cout << std::endl << "-----------------------------------------------------------------" << std::endl << std::endl;
 
         usedFilteredImg.clear();
-
     }
 }
-
 
 cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours)
 {
     cv::Mat imgContour(img_seuille.rows, img_seuille.cols, CV_64FC1);
+    cv::Mat imgContourAffichable(img_seuille.rows, img_seuille.cols, CV_32FC3);
 
     //init
     for(int i = 0; i < imgContour.rows; i ++)
         for(int j = 0; j < imgContour.cols; j++)
+        {
             imgContour.at<double>(i,j) = -1;
+            imgContourAffichable.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,0);
+        }
 
     for(int i = 0; i < img_seuille.rows; i ++)
         for(int j = 0; j < img_seuille.cols; j++)
-        {
             if(img_seuille.at<double>(i,j) > 0 && imgContour.at<double>(i,j) == -1)
             {
-                contours.push_back(img_seuille.at<double>(i,j));
-                imgContour.at<double>(i,j) = contours.size();
-                etendre_contour(i, j, img_seuille, orientation, &imgContour, &contours);
+                Contour nouveauContour;
+                nouveauContour.pix.push_back(cv::Point2i(i,j));
+                contours.push_back(nouveauContour);
+                imgContour.at<double>(i,j) = contours.size() - 1;
+                etendre_contour(i, j, img_seuille, orientation, imgContour, contours);
             }
 
+    recherche_extremites(imgContour, contours);
+    amelioration_contours(imgContour, orientation, contours);
+
+    /*
+    for(int k = 0; k < contours.size(); k++)
+    {
+        std::cout << "contour " << k << " contient les pixels " ;
+        for(int l = 0; l < contours[k].pix.size(); l ++)
+        {
+            std::cout << "x: " << contours[k].pix[l].x << " y: " << contours[k].pix[l].y << " ";
         }
+        std::cout << std::endl;
+    }*/
+
+    std::cout << "nb de contours = " << contours.size() << std::endl;
 
     // fermeture_contours();
 
     // creation_img_out();
-}
 
 
-void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours)
-{
-    if(i > 0 && j > 0  && img_seuille.at<double>(i-1, j-1) > 0 && imgContour.at<double>(i-1, j-1) == -1)
+    srand(time(NULL));
+    cv::Vec3f couleur;
+
+    for(unsigned int i = 0; i < contours.size(); i++)
     {
-        if((orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) < 23.0)
-            || (orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) > -23.0))
+
+        couleur[0] = rand()/(float)RAND_MAX;
+        couleur[1] = rand()/(float)RAND_MAX;
+        couleur[2] = rand()/(float)RAND_MAX;
+
+        for(unsigned int j = 0; j < contours[i].pix.size(); j++)
         {
-            contours[contours.size()].push_back(img_seuille.at<double>(i-1, j-1));
-            imgContour.at<double>(i-1, j-1) = contours.size();
-            etendre_contour(i -1, j -1, , img_seuille, orientation, imgContour, contours);
+            int x = contours[i].pix[j].x;
+            int y = contours[i].pix[j].y;
+            imgContourAffichable.at<cv::Vec3f>(x, y) = couleur;
         }
     }
 
-    // faire les autres indices
+    return imgContourAffichable;
+}
+
+void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours)
+{
+    int seuil = 45.0;
+    if(i > 0 && j > 0  && img_seuille.at<double>(i-1, j-1) > 0 && imgContour.at<double>(i-1, j-1) == -1)
+    {
+        if((orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j-1));
+            imgContour.at<double>(i-1, j-1) = contours.size() - 1;
+            etendre_contour(i -1, j -1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(i > 0 && img_seuille.at<double>(i-1, j) > 0 && imgContour.at<double>(i-1, j) == -1)
+    {
+        if((orientation.at<double>(i-1, j) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i-1, j) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i-1, j) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j));
+            imgContour.at<double>(i-1, j) = contours.size() - 1;
+            etendre_contour(i-1, j, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(i > 0 && j < img_seuille.cols  && img_seuille.at<double>(i-1, j+1) > 0 && imgContour.at<double>(i-1, j+1) == -1)
+    {
+        if((orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j+1));
+            imgContour.at<double>(i-1, j+1) = contours.size() - 1;
+            etendre_contour(i-1, j+1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(j > 0  && img_seuille.at<double>(i, j-1) > 0 && imgContour.at<double>(i, j-1) == -1)
+    {
+        if((orientation.at<double>(i, j-1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i, j-1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i, j-1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i, j-1));
+            imgContour.at<double>(i, j-1) = contours.size() - 1;
+            etendre_contour(i, j-1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(j < img_seuille.cols  && img_seuille.at<double>(i, j+1) > 0 && imgContour.at<double>(i, j+1) == -1)
+    {
+        if((orientation.at<double>(i, j+1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i, j+1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i, j+1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i, j+1));
+            imgContour.at<double>(i, j+1) = contours.size() - 1;
+            etendre_contour(i, j+1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(i < img_seuille.rows && j > 0  && img_seuille.at<double>(i+1, j-1) > 0 && imgContour.at<double>(i+1, j-1) == -1)
+    {
+        if((orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j-1));
+            imgContour.at<double>(i+1, j-1) = contours.size() - 1;
+            etendre_contour(i+1, j-1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(i < img_seuille.rows && img_seuille.at<double>(i+1, j) > 0 && imgContour.at<double>(i+1, j) == -1)
+    {
+        if((orientation.at<double>(i+1, j) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i+1, j) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i+1, j) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j));
+            imgContour.at<double>(i+1, j) = contours.size() - 1;
+            etendre_contour(i+1, j, img_seuille, orientation, imgContour, contours);
+        }
+    }
+
+    if(i < img_seuille.rows && j < img_seuille.cols  && img_seuille.at<double>(i+1, j+1) > 0 && imgContour.at<double>(i+1, j+1) == -1)
+    {
+        if((orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j) <= seuil)
+            && (orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j) >= -seuil))
+        {
+            //std::cout << orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j) << " ";
+            contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j+1));
+            imgContour.at<double>(i+1, j+1) = contours.size() - 1;
+            etendre_contour(i+1, j+1, img_seuille, orientation, imgContour, contours);
+        }
+    }
+}
+
+void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours)
+{
+    unsigned int i = 0;
+    unsigned int nb_extremite = 0;
+
+    while( i < contours.size() )
+    {
+        for(unsigned int k = 0; k < contours[i].pix.size(); k++)
+        {
+            cv::Point2i px = contours[i].pix[k];
+            int nb_voisin = 0;
+            if (px.x-1 > 0 && px.y-1 > 0 && imgContour.at<double>(px.x-1, px.y-1) != -1 ) nb_voisin++;
+            if (px.x-1 > 0 && imgContour.at<double>(px.x-1, px.y) != -1 ) nb_voisin++;
+            if (px.x-1 > 0 && px.y+1 < imgContour.cols && imgContour.at<double>(px.x-1, px.y+1) != -1 ) nb_voisin++;
+            if (px.y-1 > 0 && imgContour.at<double>(px.x, px.y-1) != -1 ) nb_voisin++;
+            if (px.y+1 < imgContour.cols && imgContour.at<double>(px.x, px.y+1) != -1 ) nb_voisin++;
+            if (px.x+1 < imgContour.rows && px.y-1 > 0 && imgContour.at<double>(px.x+1, px.y-1) != -1 ) nb_voisin++;
+            if (px.x+1 < imgContour.rows && imgContour.at<double>(px.x+1, px.y) != -1 ) nb_voisin++;
+            if (px.x+1 < imgContour.rows && px.y+1 < imgContour.cols && imgContour.at<double>(px.x+1, px.y+1) != -1 ) nb_voisin++;
+
+            if(nb_voisin < 2)
+            {
+                contours[i].extremites.push_back(px);
+                nb_extremite++;
+            }
+        }
+        i++;
+    }
+    std::cout << "nb_extremité = " << nb_extremite << std::endl;
+}
+
+void amelioration_contours(cv::Mat &imgContour, cv::Mat& orientation, std::vector<Contour> &contours)
+{
+    unsigned int i = 0;
+    int compteur = 0;
+
+    int largeur = 9;
+    int hauteur = 9;
+
+    while ( i < contours.size())
+    {
+        for(unsigned int k = 0; k < contours[i].pix.size(); k++)
+        {
+            int xMin = contours[i].pix[k].x < (largeur / 2) ? 0 : contours[i].pix[k].x - (largeur / 2);
+            int yMin = contours[i].pix[k].y < (hauteur / 2) ? 0 : contours[i].pix[k].y - (hauteur / 2);
+            int xMax = (contours[i].pix[k].x + (largeur / 2) >= imgContour.cols) ? imgContour.cols - 1 : contours[i].pix[k].x + (largeur / 2);
+            int yMax = (contours[i].pix[k].y + (hauteur / 2) >= imgContour.rows) ? imgContour.rows - 1 : contours[i].pix[k].y + (hauteur / 2);
+
+            int nouvelleLargeur = xMax - xMin + 1;
+            int nouvelleHauteur = yMax - yMin + 1;
+
+            for(int m = 0; m < nouvelleHauteur; m++)
+            {
+                for(int n = 0; n < nouvelleLargeur; n++)
+                {
+                    unsigned int alpha = imgContour.at<double>(xMin + m, yMin + n);
+                    if(alpha != -1 && alpha != i)
+                    {
+                        bool merge = false;
+                        for(unsigned int p = 0; p < contours[alpha].extremites.size(); p++)
+                        {
+                            if(contours[alpha].extremites[p].x == xMin + m
+                               && contours[alpha].extremites[p].y == yMin + n)
+                            {
+                                if(orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].pix[k].x, contours[i].pix[k].y) <= 45.0
+                                        && orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].pix[k].x, contours[i].pix[k].y) >= 0.0)
+                                {
+                                    merge = true;
+                                    merge_contour(imgContour, contours, i, alpha);
+                                    compteur++;
+                                }
+                            }
+                            if(merge) break;
+                        }
+                    }
+                }
+            }
+        }
+        i++;
+    }
+    std::cout << "compteur: " << compteur << std::endl;
+}
+
+void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j)
+{
+    for(int m = 0; m < contours[j].pix.size(); m++)
+    {
+        imgContour.at<double>(contours[j].pix[m].x, contours[j].pix[m].y) = i;
+        contours[i].pix.push_back(contours[j].pix[m]);
+    }
+    contours[j].pix.clear();
+
+    for(int n = 0; n < contours[j].extremites.size(); n++)
+        contours[i].extremites.push_back(contours[j].extremites[n]);
+    contours[j].extremites.clear();
 }
 
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
@@ -276,24 +504,22 @@ cv::Mat norme(cv::Mat img)
     // Récupération des valeurs min et max de l'image
     double min = img.at<double>(0, 0);
     double max = img.at<double>(0, 0);
-    for (int i = 0; i < img.rows ; i++) {
-        for(int j = 0; j < img.cols ; j++) {
+    for (int i = 0; i < img.rows ; i++)
+        for(int j = 0; j < img.cols ; j++)
+        {
             if (min > img.at<double>(i, j)) min = img.at<double>(i, j);
             if (max < img.at<double>(i, j)) max = img.at<double>(i, j);
         }
-    }
+
 
     // Normage de l'image pour avoir des valeurs entre [O, 255]
-    for (int i = 0; i < img.rows ; i++) {
-        for(int j = 0; j < img.cols ; j++) {
+    for (int i = 0; i < img.rows ; i++)
+        for(int j = 0; j < img.cols ; j++)
             img_out.at<uchar>(i, j) = round(((img.at<double>(i, j) - min) / ( max - min)) * 255);
             //if(round(((img.at<double>(i, j)-min)/(max-min)) * 255) > 0)std::cout << round(((img.at<double>(i, j)-min)/(max-min)) * 255) << std::endl;
-        }
-    }
 
     return img_out;
 }
-
 
 #define GRADIENT_MAX 0
 #define GRADIENT_SUM 1
@@ -374,7 +600,6 @@ void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalcu
                     std::cout << "Mauvais mode de gradient" << std::endl;
 
     }
-
 }
 
 cv::Mat seuillage(cv::Mat img, int type)
@@ -475,7 +700,7 @@ cv::Mat seuillage(cv::Mat img, int type)
                     variance /= (img.rows * img.cols);
 
                     seuil_h = avg + sqrt(variance);
-                    seuil_b = MAX(0, avg);
+                    seuil_b = MAX(0, avg) ;
 
                     //Seuil haut
                     for (int i = 0; i < img.rows ; i++)
@@ -529,13 +754,11 @@ cv::Mat seuillage(cv::Mat img, int type)
     }
 
     return img_out;
-
 }
 
-string demanderImage()
+std::string demanderImage()
 {
-
-    std::vector<string> images;
+    std::vector<std::string> images;
 
     images.push_back("Tux.png (256*256)");
     images.push_back("David.jpg (300*200)");
@@ -550,6 +773,7 @@ string demanderImage()
     images.push_back("arton553.jpg (1931*1931)");
 
     images.push_back("lena.jpg ");
+    images.push_back("feuille_collee_carton.png");
 
     images.push_back("MIF23/B.JPG ");
     images.push_back("MIF23/B1.JPG ");
@@ -562,24 +786,23 @@ string demanderImage()
     images.push_back("MIF23/purple_2_bw.jpg ");
     images.push_back("MIF23/rose_2_bw.JPG ");
 
+    std::cout << "Entrez le numero de l'image a segmenter : " << std::endl;
 
-    cout << "Entrez le numero de l'image a segmenter : " << endl;
-
-    for(unsigned int i = 0; i < images.size(); i++) cout << i << " - " << images[i] << endl;
+    for(unsigned int i = 0; i < images.size(); i++) std::cout << i << " - " << images[i] << std::endl;
 
     while(true)
     {
-        string tmp;
-        cin >> tmp;
+        std::string tmp;
+        std::cin >> tmp;
         unsigned int choix = atof(tmp.c_str());
         if(choix < images.size() && choix >= 0)
         {
             tmp = images[choix];
             tmp = tmp.substr(0,tmp.find(" "));
-            cout << tmp << endl << endl;
+            std::cout << tmp << std::endl << std::endl;
             return tmp;
         }
-        cout << "Le numero d'image choisit n'existe pas. " << tmp << " Re-essayez : " << endl;
+        std::cout << "Le numero d'image choisit n'existe pas. " << tmp << " Re-essayez : " << std::endl;
     }
 }
 
