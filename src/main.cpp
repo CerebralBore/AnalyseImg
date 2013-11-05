@@ -35,6 +35,7 @@ int main()
     cv::Mat moduleSeuille;
     cv::Mat moduleAffinage;
     cv::Mat imgContours;
+    cv::Mat moduleAffinageAff;
     std::vector<Contour> contours;
 
     bool bonChemin;
@@ -43,6 +44,7 @@ int main()
     int gradientType = 0;
     int directionType = 0;
     int seuillageType = 0;
+    int angleAff;
 
     double m2_1[3][3] = {{-1, -1, -1}, {0, 0, 0}, {1, 1, 1}};
     double m2_2[3][3] = {{-1, -1, 0}, {-1, 0, 1}, {0, 1, 1}};
@@ -98,9 +100,12 @@ int main()
         moduleSeuille = cv::Mat(img.rows, img.cols, CV_64FC1);
         moduleAffinage = cv::Mat(img.rows, img.cols, CV_64FC1);
         imgContours = cv::Mat(img.rows, img.cols, CV_64FC1);
+        moduleAffinageAff = cv::Mat(img.rows, img.cols, CV_32FC3);
 
         equalizeHist(img, img);
         cv::imshow("Image original", img);
+        medianBlur(img, img, 3);
+        cv::imshow("Image original flou", img);
 
         key = '-';
         std::cout << "---------------------------" << std::endl << "choix du filtre" << std::endl;
@@ -167,7 +172,26 @@ int main()
         cv::imshow("module seuille", moduleSeuille);
 
         moduleAffinage = affinage (moduleSeuille, pente);
-        cv::imshow("module Affine", moduleAffinage);
+        for(int i = 0; i < moduleAffinageAff.rows; i ++)
+            for(int j = 0; j < moduleAffinageAff.cols; j++)
+            {
+                if(moduleAffinage.at<double>(i,j) > 0)
+                {
+                    angleAff = (int)pente.at<double>(i, j);
+                    if(angleAff >=0 && angleAff < 45/2) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(1,1,1);
+                    else if (angleAff < 90 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0,1,1);
+                    else if (angleAff < 135 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,1);
+                    else if (angleAff < 180 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(1,0,1);
+                    else if (angleAff < 225 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(1,0,0);
+                    else if (angleAff < 270 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(1,1,0);
+                    else if (angleAff < 315 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0,1,0);
+                    else if (angleAff < 360 - (45 / 2)) moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0.5,0.5,0.5);
+                    else moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(1,1,1);
+                }
+                else
+                    moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,0);
+            }
+        cv::imshow("module Affine", moduleAffinageAff);
 
         imgContours = parcours(moduleAffinage, pente, contours);
         cv::imshow("contours", imgContours);
@@ -180,6 +204,11 @@ int main()
 
         std::cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << std::endl;
 
+        for(int i = 0; i < contours.size(); i++)
+        {
+            contours[i].pix.clear();
+            contours[i].extremites.clear();
+        }
         contours.clear();
 
         key = '-';
@@ -190,6 +219,9 @@ int main()
         std::cout << std::endl << "-----------------------------------------------------------------" << std::endl << std::endl;
     }
 }
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours)
 {
@@ -240,12 +272,15 @@ cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>&
     return imgContourAffichable;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
 void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv::Mat& imgContour, std::vector<Contour>& contours)
 {
     double seuil = 45.0;
     if(i > 0 && j > 0  && img_seuille.at<double>(i-1, j-1) > 0 && imgContour.at<double>(i-1, j-1) == -1)
     {
-        if(abs(orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i-1, j-1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j-1));
@@ -256,7 +291,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(i > 0 && img_seuille.at<double>(i-1, j) > 0 && imgContour.at<double>(i-1, j) == -1)
     {
-        if(abs(orientation.at<double>(i-1, j) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i-1, j) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i-1, j) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i-1, j) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j));
@@ -267,7 +303,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(i > 0 && j < img_seuille.cols  && img_seuille.at<double>(i-1, j+1) > 0 && imgContour.at<double>(i-1, j+1) == -1)
     {
-        if(abs(orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i-1, j+1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i-1, j+1));
@@ -278,7 +315,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(j > 0  && img_seuille.at<double>(i, j-1) > 0 && imgContour.at<double>(i, j-1) == -1)
     {
-        if(abs(orientation.at<double>(i, j-1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i, j-1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i, j-1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i, j-1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i, j-1));
@@ -289,7 +327,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(j < img_seuille.cols  && img_seuille.at<double>(i, j+1) > 0 && imgContour.at<double>(i, j+1) == -1)
     {
-        if(abs(orientation.at<double>(i, j+1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i, j+1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i, j+1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i, j+1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i, j+1));
@@ -300,7 +339,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(i < img_seuille.rows && j > 0  && img_seuille.at<double>(i+1, j-1) > 0 && imgContour.at<double>(i+1, j-1) == -1)
     {
-        if(abs(orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i+1, j-1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j-1));
@@ -311,7 +351,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(i < img_seuille.rows && img_seuille.at<double>(i+1, j) > 0 && imgContour.at<double>(i+1, j) == -1)
     {
-        if(abs(orientation.at<double>(i+1, j) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i+1, j) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i+1, j) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i+1, j) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j));
@@ -322,7 +363,8 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
     if(i < img_seuille.rows && j < img_seuille.cols  && img_seuille.at<double>(i+1, j+1) > 0 && imgContour.at<double>(i+1, j+1) == -1)
     {
-        if(abs(orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j) <= seuil))
+        if(abs(orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j)) <= seuil
+                || abs(orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j)) >= 360 - seuil)
         {
             //std::cout << orientation.at<double>(i+1, j+1) - orientation.at<double>(i, j) << " ";
             contours[contours.size()-1].pix.push_back(cv::Point2i(i+1, j+1));
@@ -332,17 +374,21 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
     }
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
 void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours)
 {
+    cv::Point2i px;
     unsigned int i = 0;
     unsigned int nb_extremite = 0;
+    int nb_voisin;
 
     while( i < contours.size() )
     {
         for(unsigned int k = 0; k < contours[i].pix.size(); k++)
         {
-            cv::Point2i px = contours[i].pix[k];
-            int nb_voisin = 0;
+            px = contours[i].pix[k];
+            nb_voisin = 0;
             if (px.x-1 > 0 && px.y-1 > 0 && imgContour.at<double>(px.x-1, px.y-1) != -1 ) nb_voisin++;
             if (px.x-1 > 0 && imgContour.at<double>(px.x-1, px.y) != -1 ) nb_voisin++;
             if (px.x-1 > 0 && px.y+1 < imgContour.cols && imgContour.at<double>(px.x-1, px.y+1) != -1 ) nb_voisin++;
@@ -362,6 +408,8 @@ void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours)
     }
     std::cout << "nb_extremité = " << nb_extremite << std::endl;
 }
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 void amelioration_contours(cv::Mat &imgContour, cv::Mat& orientation, std::vector<Contour> &contours)
 {
@@ -420,10 +468,14 @@ void amelioration_contours(cv::Mat &imgContour, cv::Mat& orientation, std::vecto
     std::cout << "compteur: " << compteur << std::endl;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
 double distance(int a_x, int a_y, int b_x, int b_y)
 {
     return(sqrt(pow(b_x - a_x,2) + pow(b_y - a_y, 2)));
 }
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 bool test_validite_merge(int a_x, int a_y, int b_x, int b_y, double angle_a, double angle_b)
 {
@@ -440,6 +492,8 @@ bool test_validite_merge(int a_x, int a_y, int b_x, int b_y, double angle_a, dou
     return false;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
 void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j)
 {
     for(unsigned int m = 0; m < contours[j].pix.size(); m++)
@@ -453,6 +507,9 @@ void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, i
         contours[i].extremites.push_back(contours[j].extremites[n]);
     contours[j].extremites.clear();
 }
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
 {
@@ -573,129 +630,34 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
             img_out.at<double>(pointmax.x, pointmax.y) = max;
         }
 
-    /*for(int i = 0; i < img_out.rows; i++)
+    int enleve;
+    for(int i = 0; i < img_out.rows; i++)
         for(int j = 0; j < img_out.cols; j++)
         {
-            if( (img_out.at<double>(i,j) != 0)
-                    && (i > 0 && j > 0 && img_out.at<double>(i-1, j-1) == 0)
-                    && (i > 0 && img_out.at<double>(i-1, j) == 0)
-                    && (i > 0 && j < img_out.cols && img_out.at<double>(i-1, j+1) == 0)
+            if(img_out.at<double>(i,j) != 0)
+            {
+                enleve = 1;
+                if((i > 0 && j > 0 && img_out.at<double>(i-1, j-1) != 0)
+                    || (i > 0 && img_out.at<double>(i-1, j) != 0)
+                    || (i > 0 && img_out.at<double>(i-1, j) != 0)
+                    || (i > 0 && j < img_out.cols && img_out.at<double>(i-1, j+1) != 0)
 
-                    && (j > 0 && img_out.at<double>(i, j-1) == 0)
-                    && (j < img_out.cols && amplitude.at<double>(i, j+1) == 0)
+                    ||(j > 0 && img_out.at<double>(i, j-1) != 0)
+                    ||(j < img_out.cols && img_out.at<double>(i, j+1) != 0)
 
-                    && (i < img_out.rows && j > 0 && img_out.at<double>(i+1, j-1) == 0)
-                    && (i < img_out.rows && img_out.at<double>(i+1, j) == 0)
-                    && (i < img_out.rows && j < img_out.cols && img_out.at<double>(i+1, j+1) == 0))
-                img_out.at<double>(i,j) = 0;
-        }*/
+                    ||(i < img_out.rows && j > 0 && img_out.at<double>(i+1, j-1) != 0)
+                    ||(i < img_out.rows && img_out.at<double>(i+1, j) != 0)
+                    ||(i < img_out.rows && j < img_out.cols && img_out.at<double>(i+1, j+1) != 0))
+                    enleve = 0;
+                if(enleve == 1)
+                    img_out.at<double>(i,j) = 0;
+            }
+        }
     return img_out;
 }
 
-cv::Mat norme(cv::Mat img)
-{
-    cv::Mat img_out(img.rows, img.cols, CV_8UC1);
-
-    // Récupération des valeurs min et max de l'image
-    double min = img.at<double>(0, 0);
-    double max = img.at<double>(0, 0);
-    for (int i = 0; i < img.rows ; i++)
-        for(int j = 0; j < img.cols ; j++)
-        {
-            if (min > img.at<double>(i, j)) min = img.at<double>(i, j);
-            if (max < img.at<double>(i, j)) max = img.at<double>(i, j);
-        }
-
-    // Normage de l'image pour avoir des valeurs entre [O, 255]
-    for (int i = 0; i < img.rows ; i++)
-        for(int j = 0; j < img.cols ; j++)
-            img_out.at<uchar>(i, j) = round(((img.at<double>(i, j) - min) / ( max - min)) * 255);
-    //if(round(((img.at<double>(i, j)-min)/(max-min)) * 255) > 0)std::cout << round(((img.at<double>(i, j)-min)/(max-min)) * 255) << std::endl;
-
-    return img_out;
-}
-
-#define GRADIENT_MAX 0
-#define GRADIENT_SUM 1
-void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection)
-{
-    double angle = 360 / (nbDirection * 2);
-
-    std::vector<cv::Mat> usedFilteredImg;
-
-    usedFilteredImg.push_back(applyFilter(img, usedFilter[0]));
-    usedFilteredImg.push_back(applyFilter(img, usedFilter[1]));
-    usedFilteredImg.push_back(applyFilter(img, usedFilter[2]));
-    usedFilteredImg.push_back(applyFilter(img, usedFilter[3]));
-
-    double ksomme, gk, gx, gy;
-    int kmax, kmaxTemp;
-
-    for(int i = 0 ; i < img.rows ; i++)
-    {
-        for(int j = 0 ; j < img.cols ; j++)
-        {
-            ksomme = 0;
-            kmax = 0;
-            for(int k = 0 ; k < nbDirection ; k++)
-            {
-                if(nbDirection == 2)
-                    k *= 2;
-                gk = usedFilteredImg[k].at<double>(i, j);
-                ksomme += abs(gk);
-                if(nbDirection == 4 && abs(gk) > abs(usedFilteredImg[kmax].at<double>(i, j)))
-                {
-                    kmax = k;
-                    if(gk >= 0)
-                        kmaxTemp = kmax;
-                    else
-                        kmaxTemp = kmax + 4;
-                }
-            }
-            kmax = kmaxTemp;
-            if(modeCalculGradient == GRADIENT_SUM)
-                module.at<double>(i, j) = ksomme / nbDirection;
-            else //gradient max
-            {
-                if(kmax >= 4)
-                    module.at<double>(i, j) = abs(usedFilteredImg[kmax - 4].at<double>(i, j));
-                else
-                    module.at<double>(i, j) = abs(usedFilteredImg[kmax].at<double>(i, j));
-            }
-
-            if(nbDirection == 2)
-            {
-                gx = usedFilteredImg[0].at<double>(i, j);
-                gy = usedFilteredImg[2].at<double>(i, j);
-                if(gx != 0)
-                {
-                    angle = atan(gy / gx);
-                    angle *= 180 / M_PI;
-                    if(gx < 0)
-                    {
-                        if(gy >= 0)
-                            angle += 180;
-                        else
-                            angle = 180 + angle;
-                    }
-                    else
-                        if(gy < 0)
-                            angle += 360;
-                }
-                else
-                {
-                    if(gy >= 0)
-                        angle = 90;
-                    else
-                        angle = 270;
-                }
-                pente.at<double>(i, j) = angle;
-            }
-            else
-                pente.at<double>(i, j) = kmax * angle;
-        }
-    }
-}
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 cv::Mat seuillage(cv::Mat img, int type)
 {
@@ -841,6 +803,130 @@ cv::Mat seuillage(cv::Mat img, int type)
     return img_out;
 }
 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+#define GRADIENT_MAX 0
+#define GRADIENT_SUM 1
+void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection)
+{
+    double angle = 360 / (nbDirection * 2);
+
+    std::vector<cv::Mat> usedFilteredImg;
+
+    usedFilteredImg.push_back(applyFilter(img, usedFilter[0]));
+    usedFilteredImg.push_back(applyFilter(img, usedFilter[1]));
+    usedFilteredImg.push_back(applyFilter(img, usedFilter[2]));
+    usedFilteredImg.push_back(applyFilter(img, usedFilter[3]));
+
+    double ksomme, gk, gx, gy;
+    int kmax, kmaxTemp, k;
+
+    for(int i = 0 ; i < img.rows ; i++)
+    {
+        for(int j = 0 ; j < img.cols ; j++)
+        {
+            ksomme = 0;
+            kmax = 0;
+            k = 0;
+            do
+            {
+                if(nbDirection == 2 && k == 1)
+                    k++;
+                gk = usedFilteredImg[k].at<double>(i, j);
+                ksomme += abs(gk);
+                if(k == 0)
+                {
+                    kmax = 0;
+                    if(nbDirection == 4)
+                    {
+                        if(gk >= 0)
+                            kmaxTemp = kmax;
+                        else
+                            kmaxTemp = kmax + 4;
+                    }
+                }
+                else if(abs(gk) > abs(usedFilteredImg[kmax].at<double>(i, j)))
+                {
+                    kmax = k;
+                    if(nbDirection == 4)
+                    {
+                        if(gk >= 0)
+                            kmaxTemp = kmax;
+                        else
+                            kmaxTemp = kmax + 4;
+                    }
+                }
+                k++;
+            }while(k < nbDirection);
+            if(modeCalculGradient == GRADIENT_SUM)
+                module.at<double>(i, j) = ksomme / nbDirection;
+            else //gradient max
+                module.at<double>(i, j) = abs(usedFilteredImg[kmax].at<double>(i, j));
+            kmax = kmaxTemp;
+            if(nbDirection == 2)
+            {
+                gx = usedFilteredImg[0].at<double>(i, j);
+                gy = usedFilteredImg[2].at<double>(i, j);
+                if(gx != 0)
+                {
+                    angle = atan(gy / gx);
+                    angle *= 180 / M_PI;
+                    if(gx < 0)
+                    {
+                        if(gy >= 0)
+                            angle += 180;
+                        else
+                            angle = 180 + angle;
+                    }
+                    else
+                        if(gy < 0)
+                            angle += 360;
+                }
+                else
+                {
+                    if(gy >= 0)
+                        angle = 90;
+                    else
+                        angle = 270;
+                }
+                pente.at<double>(i, j) = angle;
+            }
+            else
+                pente.at<double>(i, j) = kmax * angle;
+        }
+    }
+    usedFilteredImg.clear();
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+cv::Mat norme(cv::Mat img)
+{
+    cv::Mat img_out(img.rows, img.cols, CV_8UC1);
+
+    // Récupération des valeurs min et max de l'image
+    double min = img.at<double>(0, 0);
+    double max = img.at<double>(0, 0);
+    for (int i = 0; i < img.rows ; i++)
+        for(int j = 0; j < img.cols ; j++)
+        {
+            if (min > img.at<double>(i, j)) min = img.at<double>(i, j);
+            if (max < img.at<double>(i, j)) max = img.at<double>(i, j);
+        }
+
+    // Normage de l'image pour avoir des valeurs entre [O, 255]
+    for (int i = 0; i < img.rows ; i++)
+        for(int j = 0; j < img.cols ; j++)
+            img_out.at<uchar>(i, j) = round(((img.at<double>(i, j) - min) / ( max - min)) * 255);
+    //if(round(((img.at<double>(i, j)-min)/(max-min)) * 255) > 0)std::cout << round(((img.at<double>(i, j)-min)/(max-min)) * 255) << std::endl;
+
+    return img_out;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
 std::string demanderImage()
 {
     std::vector<std::string> images;
@@ -858,6 +944,11 @@ std::string demanderImage()
     images.push_back("arton553.jpg (1931*1931)");
 
     images.push_back("lena.jpg ");
+    images.push_back("normal.jpg ");
+
+    images.push_back("villa-datcha-altura-portugal.png");
+    images.push_back("crate.png");
+
     images.push_back("feuille_collee_carton.png");
 
     images.push_back("MIF23/B.JPG ");
@@ -885,11 +976,14 @@ std::string demanderImage()
             tmp = images[choix];
             tmp = tmp.substr(0,tmp.find(" "));
             std::cout << tmp << std::endl << std::endl;
+            images.clear();
             return tmp;
         }
         std::cout << "Le numero d'image choisit n'existe pas. " << tmp << " Re-essayez : " << std::endl;
     }
 }
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 cv::Mat applyFilter(cv::Mat& img, cv::Mat& filtre)
 {
