@@ -103,9 +103,9 @@ int main()
         moduleAffinageAff = cv::Mat(img.rows, img.cols, CV_32FC3);
 
         equalizeHist(img, img);
-        cv::imshow("Image original", img);
+        cv::imshow("Image originale", img);
         medianBlur(img, img, 3);
-        cv::imshow("Image original flou", img);
+        cv::imshow("Image originale floue", img);
 
         key = '-';
         std::cout << "---------------------------" << std::endl << "choix du filtre" << std::endl;
@@ -202,7 +202,7 @@ int main()
                 std::cout << imgContours.at<double>(i,j) << " ";
         */
 
-        std::cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter, (s) pour segmenter une nouvelle image." << std::endl;
+        std::cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter." << std::endl;
 
         for(int i = 0; i < contours.size(); i++)
         {
@@ -212,7 +212,7 @@ int main()
         contours.clear();
 
         key = '-';
-        while(key != 'q' && key != 's' && key != 'Q' && key != 'S') key = cvWaitKey(50);
+        while(key != 'q' /*&& key != 's'*/ && key != 'Q' /*&& key != 'S'*/) key = cvWaitKey(50);
 
         cvDestroyAllWindows();
 
@@ -241,7 +241,7 @@ void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, i
 
 double distance(int a_x, int a_y, int b_x, int b_y)
 {
-    return(sqrt(pow(b_x - a_x,2) + pow(b_y - a_y, 2)));
+    return(sqrt((double)pow(b_x - a_x,2) + (double)pow(b_y - a_y, 2)));
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -252,19 +252,14 @@ bool test_validite_merge(int a_y, int a_x, int b_y, int b_x, double angle_b)
     double d2 = distance(a_x, a_y, a_x + 1, a_y);
     double d3 = distance(a_x + 1, a_y, b_x, b_y);
 
-    double angle_diff = acos((pow(d1,2) + pow(d2,2) - pow(d3,2)) / ( 2.0 * d1 * d2)) * 180.0 / M_PI;
+    double angle_diff = acos((pow(d1,2) + pow(d2,2) - pow(d3,2)) / (2.0 * d1 * d2)) * 180.0 / M_PI;
     if(b_y > a_y)
         angle_diff = 360 - angle_diff;
-    if(a_y < 10)
-        std::cout << a_x << " " << a_y << " " << b_x << " " << b_y << " " << angle_diff << " " << (angle_b + (45.0 / 2.0)) << " " << (angle_b - (45.0 / 2.0)) << " " << (angle_b + (45.0 / 2.0) + 180) << " " << (angle_b - (45.0 / 2.0) + 180) << " " << (angle_b + (45.0 / 2.0) - 180) << " " << (angle_b - (45.0 / 2.0) - 180) << std::endl;
-    if((angle_diff <= (angle_b + (45.0 / 2.0)) && angle_diff >= (angle_b - (45.0 / 2.0)))
-            || (angle_diff <= (angle_b + (45.0 / 2.0) + 180) && angle_diff >= (angle_b - (45.0 / 2.0) + 180))
-            || (angle_diff <= (angle_b + (45.0 / 2.0) - 180) && angle_diff >= (angle_b - (45.0 / 2.0) - 180)))
-
-    {
-        std::cout << "vrais" << std::endl;
+    if((angle_diff <= (angle_b + (45.0)) && angle_diff >= (angle_b - (45.0)))
+            || (angle_diff <= (angle_b + (45.0) + 180) && angle_diff >= (angle_b - (45.0) + 180))
+            || (angle_diff <= (angle_b + (45.0) - 180) && angle_diff >= (angle_b - (45.0) - 180))
+            || (angle_diff <= (angle_b + (45.0) + 360) && angle_diff >= (angle_b - (45.0) + 360)))
         return true;
-    }
     return false;
 }
 
@@ -1031,7 +1026,6 @@ std::string demanderImage()
     images.push_back("arton553.jpg (1931*1931)");
 
     images.push_back("lena.jpg ");
-    images.push_back("normal.jpg ");
 
     images.push_back("villa-datcha-altura-portugal.png");
     images.push_back("crate.png");
