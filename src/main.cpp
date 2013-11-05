@@ -22,7 +22,7 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours);
 void amelioration_contours(cv::Mat& imgContour, cv::Mat& orientation, std::vector<Contour>& contours);
 void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j);
-bool test_validite_merge(int a_x, int a_y, int b_x, int b_y, double angle_a, double angle_b);
+bool test_validite_merge(int a_y, int a_x, int b_y, int b_x, double angle_b);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 
@@ -223,53 +223,218 @@ int main()
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
 
-cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours)
+void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j)
 {
-    cv::Mat imgContour(img_seuille.rows, img_seuille.cols, CV_64FC1);
-    cv::Mat imgContourAffichable(img_seuille.rows, img_seuille.cols, CV_32FC3);
+    for(unsigned int m = 0; m < contours[j].pix.size(); m++)
+    {
+        imgContour.at<double>(contours[j].pix[m].x, contours[j].pix[m].y) = i;
+        contours[i].pix.push_back(contours[j].pix[m]);
+    }
+    contours[j].pix.clear();
 
-    //init
-    for(int i = 0; i < imgContour.rows; i ++)
-        for(int j = 0; j < imgContour.cols; j++)
+    for(unsigned int n = 0; n < contours[j].extremites.size(); n++)
+        contours[i].extremites.push_back(contours[j].extremites[n]);
+    contours[j].extremites.clear();
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+double distance(int a_x, int a_y, int b_x, int b_y)
+{
+    return(sqrt(pow(b_x - a_x,2) + pow(b_y - a_y, 2)));
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool test_validite_merge(int a_y, int a_x, int b_y, int b_x, double angle_b)
+{
+    double d1 = distance(a_x, a_y, b_x, b_y);
+    double d2 = distance(a_x, a_y, a_x + 1, a_y);
+    double d3 = distance(a_x + 1, a_y, b_x, b_y);
+
+    double angle_diff = acos((pow(d1,2) + pow(d2,2) - pow(d3,2)) / ( 2.0 * d1 * d2)) * 180.0 / M_PI;
+    if(b_y > a_y)
+        angle_diff = 360 - angle_diff;
+    if(a_y < 10)
+        std::cout << a_x << " " << a_y << " " << b_x << " " << b_y << " " << angle_diff << " " << (angle_b + (45.0 / 2.0)) << " " << (angle_b - (45.0 / 2.0)) << " " << (angle_b + (45.0 / 2.0) + 180) << " " << (angle_b - (45.0 / 2.0) + 180) << " " << (angle_b + (45.0 / 2.0) - 180) << " " << (angle_b - (45.0 / 2.0) - 180) << std::endl;
+    if((angle_diff <= (angle_b + (45.0 / 2.0)) && angle_diff >= (angle_b - (45.0 / 2.0)))
+            || (angle_diff <= (angle_b + (45.0 / 2.0) + 180) && angle_diff >= (angle_b - (45.0 / 2.0) + 180))
+            || (angle_diff <= (angle_b + (45.0 / 2.0) - 180) && angle_diff >= (angle_b - (45.0 / 2.0) - 180)))
+
+    {
+        std::cout << "vrais" << std::endl;
+        return true;
+    }
+    return false;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void amelioration_contours(cv::Mat &imgContour, cv::Mat& orientation, std::vector<Contour> &contours)
+{
+    int i = 0;
+    int compteur = 0;
+
+    int xMin, yMin, xMax, yMax, nouvelleLargeur, nouvelleHauteur, alpha;
+    bool merge;
+
+    int largeur = 9;
+    int hauteur = 9;
+
+    while (i < contours.size())
+    {
+        for(unsigned int k = 0; k < contours[i].extremites.size(); k++)
         {
-            imgContour.at<double>(i,j) = -1;
-            imgContourAffichable.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,0);
-        }
+            xMin = contours[i].extremites[k].x < (largeur / 2) ? 0 : contours[i].extremites[k].x - (largeur / 2);
+            yMin = contours[i].extremites[k].y < (hauteur / 2) ? 0 : contours[i].extremites[k].y - (hauteur / 2);
+            xMax = (contours[i].extremites[k].x + (largeur / 2) >= imgContour.cols) ? imgContour.cols - 1 : contours[i].extremites[k].x + (largeur / 2);
+            yMax = (contours[i].extremites[k].y + (hauteur / 2) >= imgContour.rows) ? imgContour.rows - 1 : contours[i].extremites[k].y + (hauteur / 2);
 
-    for(int i = 0; i < img_seuille.rows; i ++)
-        for(int j = 0; j < img_seuille.cols; j++)
-            if(img_seuille.at<double>(i,j) > 0 && imgContour.at<double>(i,j) == -1)
+            nouvelleLargeur = xMax - xMin + 1;
+            nouvelleHauteur = yMax - yMin + 1;
+
+            for(int m = 0; m < nouvelleHauteur; m++)
             {
-                Contour nouveauContour;
-                nouveauContour.pix.push_back(cv::Point2i(i,j));
-                contours.push_back(nouveauContour);
-                imgContour.at<double>(i,j) = contours.size() - 1;
-                etendre_contour(i, j, img_seuille, orientation, imgContour, contours);
+                for(int n = 0; n < nouvelleLargeur; n++)
+                {
+                    alpha = imgContour.at<double>(xMin + m, yMin + n);
+                    if(alpha != -1 && alpha != i)
+                    {
+                        merge = false;
+                        for(unsigned int p = 0; p < contours[alpha].extremites.size(); p++)
+                        {
+                            if(contours[alpha].extremites[p].x == xMin + m
+                                    && contours[alpha].extremites[p].y == yMin + n)
+                            {
+                                if(abs(orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].extremites[k].x, contours[i].extremites[k].y)) <= 45.0
+                                        || abs(orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].extremites[k].x, contours[i].extremites[k].y)) >= 315.0)
+                                {
+                                    if(test_validite_merge(contours[i].extremites[k].x, contours[i].extremites[k].y,
+                                                           xMin + m, yMin + n,
+                                                           orientation.at<double>(xMin + m, yMin + n)))
+                                    {
+                                        merge = true;
+                                        merge_contour(imgContour, contours, i, alpha);
+                                        compteur++;
+                                    }
+                                }
+                            }
+                            if(merge) break;
+                        }
+                    }
+                }
+            }
+        }
+        i++;
+    }
+    std::cout << "compteur: " << compteur << std::endl;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours)
+{
+    cv::Point2i px;
+    unsigned int i = 0;
+    unsigned int nb_extremite = 0;
+    int pixPos;
+    int nbVoisCont;
+
+    while( i < contours.size() )
+    {
+        for(unsigned int k = 0; k < contours[i].pix.size(); k++)
+        {
+            pixPos = 0;
+            nbVoisCont = 0;
+            px = contours[i].pix[k];
+            if (px.x-1 >= 0 && px.y-1 >= 0 && imgContour.at<double>(px.x-1, px.y-1) != -1 )
+            {
+                if(imgContour.at<double>(px.x-1, px.y-1) == imgContour.at<double>(px.x, px.y))
+                {
+                    pixPos = 1;
+                    nbVoisCont++;
+                }
+            }
+            if (px.x-1 >= 0 && imgContour.at<double>(px.x-1, px.y) != -1 )
+            {
+                if(imgContour.at<double>(px.x-1, px.y) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 1)
+                        nbVoisCont = 3;
+                    pixPos = 2;
+                    nbVoisCont++;
+                }
+            }
+            if (px.x-1 >= 0 && px.y+1 < imgContour.cols && imgContour.at<double>(px.x-1, px.y+1) != -1 )
+            {
+                if(imgContour.at<double>(px.x-1, px.y+1) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 2)
+                        nbVoisCont = 3;
+                    pixPos = 3;
+                    nbVoisCont++;
+                }
+            }
+            if (px.y+1 < imgContour.cols && imgContour.at<double>(px.x, px.y+1) != -1 )
+            {
+                if(imgContour.at<double>(px.x, px.y+1) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 3)
+                        nbVoisCont = 3;
+                    pixPos = 4;
+                    nbVoisCont++;
+                }
+            }
+            if (px.x+1 < imgContour.rows && px.y+1 < imgContour.cols && imgContour.at<double>(px.x+1, px.y+1) != -1 )
+            {
+                if(imgContour.at<double>(px.x+1, px.y+1) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 4)
+                        nbVoisCont = 3;
+                    pixPos = 5;
+                    nbVoisCont++;
+                }
+            }
+            if (px.x+1 < imgContour.rows && imgContour.at<double>(px.x+1, px.y) != -1 )
+            {
+                if(imgContour.at<double>(px.x+1, px.y) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 5)
+                        nbVoisCont = 3;
+                    pixPos = 6;
+                    nbVoisCont++;
+                }
+            }
+            if (px.x+1 < imgContour.rows && px.y-1 >= 0 && imgContour.at<double>(px.x+1, px.y-1) != -1 )
+            {
+                if(imgContour.at<double>(px.x+1, px.y-1) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 6)
+                        nbVoisCont = 3;
+                    pixPos = 7;
+                    nbVoisCont++;
+                }
+            }
+            if (px.y-1 >= 0 && imgContour.at<double>(px.x, px.y-1) != -1 )
+            {
+                if(imgContour.at<double>(px.x, px.y-1) == imgContour.at<double>(px.x, px.y))
+                {
+                    if(nbVoisCont == 1 && pixPos != 7 && pixPos != 1)
+                        nbVoisCont = 3;
+                    pixPos = 8;
+                    nbVoisCont++;
+                }
             }
 
-    recherche_extremites(imgContour, contours);
-    amelioration_contours(imgContour, orientation, contours);
-
-    std::cout << "nb de contours = " << contours.size() << std::endl;
-
-    srand(time(NULL));
-    cv::Vec3f couleur;
-
-    for(unsigned int i = 0; i < contours.size(); i++)
-    {
-
-        couleur[0] = rand()/(float)RAND_MAX;
-        couleur[1] = rand()/(float)RAND_MAX;
-        couleur[2] = rand()/(float)RAND_MAX;
-
-        for(unsigned int j = 0; j < contours[i].pix.size(); j++)
-        {
-            int x = contours[i].pix[j].x;
-            int y = contours[i].pix[j].y;
-            imgContourAffichable.at<cv::Vec3f>(x, y) = couleur;
+            if(nbVoisCont <= 2)
+            {
+                contours[i].extremites.push_back(px);
+                nb_extremite++;
+            }
         }
+        i++;
     }
-    return imgContourAffichable;
+    std::cout << "nb_extremité = " << nb_extremite << std::endl;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -376,136 +541,58 @@ void etendre_contour(int i, int j, cv::Mat img_seuille, cv::Mat orientation, cv:
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
 
-void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours)
+cv::Mat parcours(cv::Mat img_seuille, cv::Mat orientation, std::vector<Contour>& contours)
 {
-    cv::Point2i px;
-    unsigned int i = 0;
-    unsigned int nb_extremite = 0;
-    int nb_voisin;
+    cv::Mat imgContour(img_seuille.rows, img_seuille.cols, CV_64FC1);
+    cv::Mat imgContourAffichable(img_seuille.rows, img_seuille.cols, CV_32FC3);
 
-    while( i < contours.size() )
-    {
-        for(unsigned int k = 0; k < contours[i].pix.size(); k++)
+    //init
+    for(int i = 0; i < imgContour.rows; i ++)
+        for(int j = 0; j < imgContour.cols; j++)
         {
-            px = contours[i].pix[k];
-            nb_voisin = 0;
-            if (px.x-1 > 0 && px.y-1 > 0 && imgContour.at<double>(px.x-1, px.y-1) != -1 ) nb_voisin++;
-            if (px.x-1 > 0 && imgContour.at<double>(px.x-1, px.y) != -1 ) nb_voisin++;
-            if (px.x-1 > 0 && px.y+1 < imgContour.cols && imgContour.at<double>(px.x-1, px.y+1) != -1 ) nb_voisin++;
-            if (px.y-1 > 0 && imgContour.at<double>(px.x, px.y-1) != -1 ) nb_voisin++;
-            if (px.y+1 < imgContour.cols && imgContour.at<double>(px.x, px.y+1) != -1 ) nb_voisin++;
-            if (px.x+1 < imgContour.rows && px.y-1 > 0 && imgContour.at<double>(px.x+1, px.y-1) != -1 ) nb_voisin++;
-            if (px.x+1 < imgContour.rows && imgContour.at<double>(px.x+1, px.y) != -1 ) nb_voisin++;
-            if (px.x+1 < imgContour.rows && px.y+1 < imgContour.cols && imgContour.at<double>(px.x+1, px.y+1) != -1 ) nb_voisin++;
-
-            if(nb_voisin < 2)
-            {
-                contours[i].extremites.push_back(px);
-                nb_extremite++;
-            }
+            imgContour.at<double>(i,j) = -1;
+            imgContourAffichable.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,0);
         }
-        i++;
-    }
-    std::cout << "nb_extremité = " << nb_extremite << std::endl;
-}
 
-//-------------------------------------------------------------------------------------------------------------------------------------------------------
+    for(int i = 0; i < img_seuille.rows; i ++)
+        for(int j = 0; j < img_seuille.cols; j++)
+            if(img_seuille.at<double>(i,j) > 0 && imgContour.at<double>(i,j) == -1)
+            {
+                Contour nouveauContour;
+                nouveauContour.pix.push_back(cv::Point2i(i,j));
+                contours.push_back(nouveauContour);
+                imgContour.at<double>(i,j) = contours.size() - 1;
+                etendre_contour(i, j, img_seuille, orientation, imgContour, contours);
+            }
 
-void amelioration_contours(cv::Mat &imgContour, cv::Mat& orientation, std::vector<Contour> &contours)
-{
-    int i = 0;
-    int compteur = 0;
+    recherche_extremites(imgContour, contours);
+    amelioration_contours(imgContour, orientation, contours);
 
-    int largeur = 9;
-    int hauteur = 9;
+    std::cout << "nb de contours = " << contours.size() << std::endl;
 
-    while (i < contours.size())
+    srand(time(NULL));
+    cv::Vec3f couleur;
+
+    for(unsigned int i = 0; i < contours.size(); i++)
     {
-        for(unsigned int k = 0; k < contours[i].pix.size(); k++)
+        couleur[0] = rand()/(float)RAND_MAX;
+        couleur[1] = rand()/(float)RAND_MAX;
+        couleur[2] = rand()/(float)RAND_MAX;
+
+        for(unsigned int j = 0; j < contours[i].pix.size(); j++)
         {
-            int xMin = contours[i].pix[k].x < (largeur / 2) ? 0 : contours[i].pix[k].x - (largeur / 2);
-            int yMin = contours[i].pix[k].y < (hauteur / 2) ? 0 : contours[i].pix[k].y - (hauteur / 2);
-            int xMax = (contours[i].pix[k].x + (largeur / 2) >= imgContour.cols) ? imgContour.cols - 1 : contours[i].pix[k].x + (largeur / 2);
-            int yMax = (contours[i].pix[k].y + (hauteur / 2) >= imgContour.rows) ? imgContour.rows - 1 : contours[i].pix[k].y + (hauteur / 2);
-
-            int nouvelleLargeur = xMax - xMin + 1;
-            int nouvelleHauteur = yMax - yMin + 1;
-
-            for(int m = 0; m < nouvelleHauteur; m++)
-            {
-                for(int n = 0; n < nouvelleLargeur; n++)
-                {
-                    int alpha = imgContour.at<double>(xMin + m, yMin + n);
-                    if(alpha != -1 && alpha != i)
-                    {
-                        bool merge = false;
-                        for(unsigned int p = 0; p < contours[alpha].extremites.size(); p++)
-                        {
-                            if(contours[alpha].extremites[p].x == xMin + m
-                                    && contours[alpha].extremites[p].y == yMin + n)
-                            {
-                                if(orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].pix[k].x, contours[i].pix[k].y) <= 45.0
-                                        && orientation.at<double>(xMin + m, yMin + n) - orientation.at<double>(contours[i].pix[k].x, contours[i].pix[k].y) >= 0.0)
-                                {
-                                    if(test_validite_merge(contours[i].pix[k].x, contours[i].pix[k].y,
-                                                           contours[alpha].extremites[p].x, contours[alpha].extremites[p].y,
-                                                           orientation.at<double>(contours[i].pix[k].x, contours[i].pix[k].y), orientation.at<double>(xMin + m, yMin + n)))
-                                    {
-                                        merge = true;
-                                        merge_contour(imgContour, contours, i, alpha);
-                                        compteur++;
-                                    }
-                                }
-                            }
-                            if(merge) break;
-                        }
-                    }
-                }
-            }
+            int x = contours[i].pix[j].x;
+            int y = contours[i].pix[j].y;
+            imgContourAffichable.at<cv::Vec3f>(x, y) = couleur;
         }
-        i++;
+        for(unsigned int j = 0; j < contours[i].extremites.size(); j++)
+        {
+            int x = contours[i].extremites[j].x;
+            int y = contours[i].extremites[j].y;
+            imgContourAffichable.at<cv::Vec3f>(x, y) = cv::Vec3f(1, 1, 1);
+        }
     }
-    std::cout << "compteur: " << compteur << std::endl;
-}
-
-//-------------------------------------------------------------------------------------------------------------------------------------------------------
-
-double distance(int a_x, int a_y, int b_x, int b_y)
-{
-    return(sqrt(pow(b_x - a_x,2) + pow(b_y - a_y, 2)));
-}
-
-//-------------------------------------------------------------------------------------------------------------------------------------------------------
-
-bool test_validite_merge(int a_x, int a_y, int b_x, int b_y, double angle_a, double angle_b)
-{
-    double d1 = distance(a_x, a_y, b_x, b_y);
-    double d2 = distance(a_x, a_y, a_x + 1, a_y);
-    double d3 = distance(a_x + 1, a_y, b_x, b_y);
-
-    double angle_diff = acos((pow(d1,2) + pow(d2,2) - pow(d3,2)) / ( 2 * d1 * d2)) * 180 / M_PI;
-
-    if(angle_diff < (angle_a + 90 + (angle_b - angle_a) + 20.0)
-            && angle_diff > (angle_a + 90 + (angle_b - angle_a) - 20))
-        return true;
-    //std::cout << angle_diff << " " << (angle_a + 90.0 + (angle_b - angle_a)) << " " << (angle_a + 90.0 - (angle_b - angle_a)) << std::endl;
-    return false;
-}
-
-//-------------------------------------------------------------------------------------------------------------------------------------------------------
-
-void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j)
-{
-    for(unsigned int m = 0; m < contours[j].pix.size(); m++)
-    {
-        imgContour.at<double>(contours[j].pix[m].x, contours[j].pix[m].y) = i;
-        contours[i].pix.push_back(contours[j].pix[m]);
-    }
-    contours[j].pix.clear();
-
-    for(unsigned int n = 0; n < contours[j].extremites.size(); n++)
-        contours[i].extremites.push_back(contours[j].extremites[n]);
-    contours[j].extremites.clear();
+    return imgContourAffichable;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
