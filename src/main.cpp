@@ -10,6 +10,14 @@ struct Contour{
     std::vector<cv::Point2i> extremites;
 };
 
+
+struct LineHough{
+    int ro;
+    int teta;
+    int min;
+    int max;
+};
+
 std::string demanderImage();
 
 void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection);
@@ -23,6 +31,11 @@ void recherche_extremites(cv::Mat& imgContour, std::vector<Contour>& contours);
 void amelioration_contours(cv::Mat& imgContour, cv::Mat& orientation, std::vector<Contour>& contours);
 void merge_contour(cv::Mat& imgContour, std::vector<Contour>& contours, int i, int j);
 bool test_validite_merge(int a_y, int a_x, int b_y, int b_x, double angle_b);
+cv::Mat recuperationPix(cv::Mat imgContour, std::vector<cv::Point2i> &listePoints);
+cv::Mat hough(std::vector<cv::Point2i> &listePoints, int hauteur);
+cv::Mat imageHough(cv::Mat imgH);
+cv::Mat seuillageHough(cv::Mat imghoughNS, std::vector<cv::Point2i> &listePoints, std::vector<LineHough> &listesDroitesHough);
+cv::Mat imageDroitesHough(std::vector<LineHough>& listesDroitesHough, int hauteur, int largeur);
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
 
@@ -36,7 +49,13 @@ int main()
     cv::Mat moduleAffinage;
     cv::Mat imgContours;
     cv::Mat moduleAffinageAff;
+    cv::Mat imgPix;
+    cv::Mat imgHough;
+    cv::Mat imgHoughSeuille;
+    cv::Mat imgDroitesHough;
     std::vector<Contour> contours;
+    std::vector<cv::Point2i> listePoints;
+    std::vector<LineHough> listesDroitesHough;
 
     bool bonChemin;
 
@@ -45,6 +64,7 @@ int main()
     int directionType = 0;
     int seuillageType = 0;
     int angleAff;
+    int hauteurValeur;
 
     double m2_1[3][3] = {{-1, -1, -1}, {0, 0, 0}, {1, 1, 1}};
     double m2_2[3][3] = {{-1, -1, 0}, {-1, 0, 1}, {0, 1, 1}};
@@ -104,7 +124,7 @@ int main()
 
         equalizeHist(img, img);
         cv::imshow("Image originale", img);
-        medianBlur(img, img, 3);
+        /*medianBlur(img, img, 3);
         cv::imshow("Image originale floue", img);
 
         key = '-';
@@ -171,7 +191,7 @@ int main()
         moduleSeuille = seuillage(module, seuillageType);
         cv::imshow("module seuille", moduleSeuille);
 
-        moduleAffinage = affinage (moduleSeuille, pente);
+        moduleAffinage = affinage(moduleSeuille, pente);
         for(int i = 0; i < moduleAffinageAff.rows; i ++)
             for(int j = 0; j < moduleAffinageAff.cols; j++)
             {
@@ -191,16 +211,32 @@ int main()
                 else
                     moduleAffinageAff.at<cv::Vec3f>(i,j) = cv::Vec3f(0,0,0);
             }
-        cv::imshow("module Affine", moduleAffinageAff);
+        cv::imshow("module Affine", moduleAffinageAff);*/
+        //--
+        moduleAffinage = img;
+        //--
+        cv::imshow("module Affine", moduleAffinage);
 
-        imgContours = parcours(moduleAffinage, pente, contours);
+
+        hauteurValeur = sqrt(pow(moduleAffinage.rows, 2) + pow(moduleAffinage.cols, 2));
+
+        imgPix = recuperationPix(moduleAffinage, listePoints);
+        cv::imshow("imgPix", norme(imgPix));
+
+        imgHough = hough(listePoints, hauteurValeur);
+
+        cv::imshow("hough", norme(imgHough));
+
+        imgHoughSeuille = seuillageHough(imgHough, listePoints, listesDroitesHough);
+        cv::imshow("hough seuille", norme(imgHoughSeuille));
+
+        std::cout << "nombre de droites de hough: " << listesDroitesHough.size() << std::endl;
+
+        imgDroitesHough = imageDroitesHough(listesDroitesHough, img.rows, img.cols);
+        cv::imshow("image droite hough", norme(imgDroitesHough));
+
+        /*imgContours = parcours(moduleAffinage, pente, contours);
         cv::imshow("contours", imgContours);
-
-        /*
-        for(int i = 0; i < imgContours.rows; i++)
-            for(int j = 0; j < imgContours.cols; j++)
-                std::cout << imgContours.at<double>(i,j) << " ";
-        */
 
         std::cout << "Cliquez sur une fenetre d'OpenCv puis (q) pour pour quitter." << std::endl;
 
@@ -209,7 +245,7 @@ int main()
             contours[i].pix.clear();
             contours[i].extremites.clear();
         }
-        contours.clear();
+        contours.clear();*/
 
         key = '-';
         while(key != 'q' /*&& key != 's'*/ && key != 'Q' /*&& key != 'S'*/) key = cvWaitKey(50);
@@ -218,6 +254,182 @@ int main()
 
         std::cout << std::endl << "-----------------------------------------------------------------" << std::endl << std::endl;
     }
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+cv::Mat imageDroitesHough(std::vector<LineHough>& listesDroitesHough, int hauteur, int largeur)
+{
+    cv::Mat imgDroitesHough = cv::Mat(hauteur, largeur, CV_64FC1);
+    int x1, y1, x2, y2;
+    double a, b;
+    std::cout << listesDroitesHough.size() << std::endl;
+    for(unsigned int i = 0; i < listesDroitesHough.size(); i++)
+    {
+        a = cos(listesDroitesHough.at(i).teta / 360 * M_PI);
+        b = sin(listesDroitesHough.at(i).teta / 360 * M_PI);
+
+        std::cout << listesDroitesHough.at(i).ro << ", " << listesDroitesHough.at(i).min << "::" << listesDroitesHough.at(i).max <<std::endl;
+        if((listesDroitesHough.at(i).teta >= 90 && listesDroitesHough.at(i).teta <= 270) || listesDroitesHough.at(i).teta >= 450)
+        {
+            y1 = listesDroitesHough.at(i).min;
+            x1 = (listesDroitesHough.at(i).ro - (y1 * b)) / a;
+
+            y2 = listesDroitesHough.at(i).max;
+            x2 = (listesDroitesHough.at(i).ro - (y2 * b)) / a;
+            std::cout << x1 << ", " << y1 << ", " << x2 << ", " << y2 << std::endl;
+        }
+        else
+        {
+            x1 = listesDroitesHough.at(i).min;
+            y1 = (listesDroitesHough.at(i).ro - (x1 * a)) / b;
+
+            x2 = listesDroitesHough.at(i).max;
+            y2 = (listesDroitesHough.at(i).ro - (x2 * a)) / b;
+        }
+        /*if(a > 0.7 || a < -0.7)
+        {
+            y1 = 0;
+            x1 = listesDroitesHough.at(i).ro / a;
+
+            y2 = largeur - 1;
+            x2 = (listesDroitesHough.at(i).ro - y2 * b) / a;
+
+        }
+        else if(b > 0.7 || b < -0.7)
+        {
+            x1 = 0;
+            y1 = listesDroitesHough.at(i).ro / b;
+
+            x2 = hauteur - 1;
+            y2 = (listesDroitesHough.at(i).ro - x2 * a) / b;
+        }*/
+        cv::line(imgDroitesHough, cv::Point(y1, x1), cv::Point(y2, x2), cv::Scalar( 1, 1, 1 ), 1, 8);
+    }
+    return imgDroitesHough;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+cv::Mat seuillageHough(cv::Mat imghoughNS, std::vector<cv::Point2i> &listePoints, std::vector<LineHough>& listesDroitesHough)
+{
+    cv::Mat imgHoughS = cv::Mat(imghoughNS.rows, imghoughNS.cols, CV_64FC1);
+
+    double ro, roMax, max, teta, tetaMax;
+    std::vector<int> elem;
+    int jMax;
+    std::cout << "nombre de points hough" << listePoints.size() << std::endl;
+
+    for(unsigned int i = 0; i < listePoints.size(); i++)
+    {
+        max = 0;
+        elem.clear();
+        for(int j = 0; j <= (2 * 270); j++)
+        {
+            teta = -M_PI/2 + (M_PI / 360.0) * j;
+            ro = listePoints.at(i).x * cos(teta) + listePoints.at(i).y * sin(teta);
+            if(ro > 0)
+            {
+                if(imghoughNS.at<double>((int)round(ro), j) > max)
+                {
+                    max = imghoughNS.at<double>((int)round(ro), j);
+                    roMax = ro;
+                    tetaMax = teta;
+                    jMax = j;
+                }
+            }
+        }
+        for(int j = 0; j <= (2 * 270); j++)
+        {
+            teta = -M_PI/2 + (M_PI / 360.0) * j;
+            ro = listePoints.at(i).x * cos(teta) + listePoints.at(i).y * sin(teta);
+            if(ro > 0)
+            {
+                if(imghoughNS.at<double>((int)round(ro), j) == max)
+                    elem.push_back(j);
+            }
+        }
+        for(unsigned int k = 0; k < elem.size(); k++)
+        {
+            jMax = elem.at(k);
+            tetaMax = -M_PI/2 + (M_PI / 360.0) * jMax;
+            roMax = listePoints.at(i).x * cos(tetaMax) + listePoints.at(i).y * sin(tetaMax);
+
+            if(imgHoughS.at<double>((int)round(roMax), jMax) == 0)
+            {
+                LineHough newLineHough;
+                newLineHough.ro = (int)round(roMax);
+                newLineHough.teta = jMax - 180;
+                if((jMax >= 90 && jMax <= 270) || jMax >= 450)
+                {
+                    newLineHough.min = listePoints.at(i).y;
+                    newLineHough.max = listePoints.at(i).y;
+                }
+                else
+                {
+                    newLineHough.min = listePoints.at(i).x;
+                    newLineHough.max = listePoints.at(i).x;
+                }
+                listesDroitesHough.push_back(newLineHough);
+                imgHoughS.at<double>((int)round(roMax), jMax) = 1;
+            }
+            else
+            {
+                unsigned int j;
+                for(j = 0; j < listesDroitesHough.size(); j++)
+                {
+                    if(listesDroitesHough.at(j).ro == (int)round(roMax) && listesDroitesHough.at(j).teta == jMax - 180)
+                        break;
+                }
+                if((jMax >= 90 && jMax <= 270) || jMax >= 450)
+                {
+                    listesDroitesHough.at(j).min = std::min(listePoints.at(i).y, listesDroitesHough.at(j).min);
+                    listesDroitesHough.at(j).max = std::max(listePoints.at(i).y, listesDroitesHough.at(j).max);
+                }
+                else
+                {
+                    listesDroitesHough.at(j).min = std::min(listePoints.at(i).x, listesDroitesHough.at(j).min);
+                    listesDroitesHough.at(j).max = std::max(listePoints.at(i).x, listesDroitesHough.at(j).max);
+                }
+            }
+        }
+    }
+    return imgHoughS;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+cv::Mat hough(std::vector<cv::Point2i> &listePoints, int hauteur)
+{
+    cv::Mat imgHough = cv::Mat(hauteur, (2 * 270 + 1), CV_64FC1);
+    double ro, teta;
+    for(unsigned int i = 0; i < listePoints.size(); i++)
+        for(int j = 0; j <= (2 * 270); j++)
+        {
+            teta = -M_PI/2 + (M_PI / 360.0) * j;
+            ro = listePoints.at(i).x * cos(teta) + listePoints.at(i).y * sin(teta);
+            if(ro > 0)
+                imgHough.at<double>((int)round(ro), j)++;
+        }
+    return imgHough;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+cv::Mat recuperationPix(cv::Mat imgContour, std::vector<cv::Point2i> &listePoints)
+{
+    cv::Mat imgOut = cv::Mat(imgContour.rows, imgContour.cols, CV_64FC1);
+    for(int i = 0; i < imgContour.rows; i ++)
+        for(int j = 0; j < imgContour.cols; j++)
+            if(imgContour.at<uchar>(i,j) > 0)
+            {
+                cv::Point2i p = cv::Point2i(i, j);
+                listePoints.push_back(p);
+            }
+    for(unsigned int i = 0; i < listePoints.size(); i++)
+        imgOut.at<double>(listePoints.at(i).x, listePoints.at(i).y)++;
+    return imgOut;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -680,7 +892,7 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
             while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
                    && amplitude.at<double>(suivant.x, suivant.y) > 0 )
             {
-                if( amplitude.at<double>(suivant.x, suivant.y) > max )
+                if((amplitude.at<double>(suivant.x, suivant.y) > max) || (amplitude.at<double>(suivant.x, suivant.y) == max && (pointmax.x > suivant.x || pointmax.y > suivant.y)))
                 {
                     max = amplitude.at<double>(suivant.x, suivant.y);
                     pointmax.x = suivant.x;
@@ -698,7 +910,7 @@ cv::Mat affinage(cv::Mat amplitude, cv::Mat orientation)
             while( suivant.x > 0 && suivant.x < amplitude.rows && suivant.y > 0 && suivant.y < amplitude.cols
                    && amplitude.at<double>(suivant.x, suivant.y) > 0 )
             {
-                if( amplitude.at<double>(suivant.x, suivant.y) > max )
+                if((amplitude.at<double>(suivant.x, suivant.y) > max) || (amplitude.at<double>(suivant.x, suivant.y) == max && (pointmax.x > suivant.x || pointmax.y > suivant.y)))
                 {
                     max = amplitude.at<double>(suivant.x, suivant.y);
                     pointmax.x = suivant.x;
@@ -1013,35 +1225,11 @@ std::string demanderImage()
 {
     std::vector<std::string> images;
 
-    images.push_back("Tux.png (256*256)");
-    images.push_back("David.jpg (300*200)");
-    images.push_back("Picasso.jpg (319*400)");
-
-    images.push_back("Paris.jpg (400*296)");
-    images.push_back("Dufy.jpg (400*316)");
-    images.push_back("Vangogh.jpg (500*300)");
-
-    images.push_back("tulipes.jpg (964*565)");
-    images.push_back("Cartoon.jpg (1024*768)");
-    images.push_back("arton553.jpg (1931*1931)");
-
-    images.push_back("lena.jpg ");
-
-    images.push_back("villa-datcha-altura-portugal.png");
-    images.push_back("crate.png");
-
-    images.push_back("feuille_collee_carton.png");
-
-    images.push_back("MIF23/B.JPG ");
-    images.push_back("MIF23/B1.JPG ");
-    images.push_back("MIF23/balls0.jpg ");
-
-    images.push_back("MIF23/bally_0.jpg ");
-    images.push_back("MIF23/bin.jpg ");
-    images.push_back("MIF23/cake_0.JPG ");
-
-    images.push_back("MIF23/purple_2_bw.jpg ");
-    images.push_back("MIF23/rose_2_bw.JPG ");
+    images.push_back("ville.jpg");
+    images.push_back("ville2.jpg");
+    images.push_back("ville3.jpg");
+    images.push_back("villa.png");
+    images.push_back("formes.png");
 
     std::cout << "Entrez le numero de l'image a segmenter : " << std::endl;
 
