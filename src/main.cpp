@@ -264,21 +264,21 @@ cv::Mat imageDroitesHough(std::vector<LineHough>& listesDroitesHough, int hauteu
     cv::Mat imgDroitesHough = cv::Mat(hauteur, largeur, CV_64FC1);
     int x1, y1, x2, y2;
     double a, b;
-    std::cout << listesDroitesHough.size() << std::endl;
+
     for(unsigned int i = 0; i < listesDroitesHough.size(); i++)
     {
-        a = cos(listesDroitesHough.at(i).teta / 360 * M_PI);
-        b = sin(listesDroitesHough.at(i).teta / 360 * M_PI);
+        a = cos(listesDroitesHough.at(i).teta / 360.0 * M_PI);
+        b = sin(listesDroitesHough.at(i).teta / 360.0 * M_PI);
 
-        std::cout << listesDroitesHough.at(i).ro << ", " << listesDroitesHough.at(i).min << "::" << listesDroitesHough.at(i).max <<std::endl;
-        if((listesDroitesHough.at(i).teta >= 90 && listesDroitesHough.at(i).teta <= 270) || listesDroitesHough.at(i).teta >= 450)
+        std::cout << listesDroitesHough.at(i).ro << ", "<< listesDroitesHough.at(i).teta << ", " << listesDroitesHough.at(i).min << "::" << listesDroitesHough.at(i).max <<std::endl;
+        if((listesDroitesHough.at(i).teta >= -90 && listesDroitesHough.at(i).teta <= 90) || listesDroitesHough.at(i).teta >= 270)
         {
             y1 = listesDroitesHough.at(i).min;
             x1 = (listesDroitesHough.at(i).ro - (y1 * b)) / a;
 
             y2 = listesDroitesHough.at(i).max;
             x2 = (listesDroitesHough.at(i).ro - (y2 * b)) / a;
-            std::cout << x1 << ", " << y1 << ", " << x2 << ", " << y2 << std::endl;
+            std::cout << listesDroitesHough.at(i).teta / 2 << ", y" << std::endl;
         }
         else
         {
@@ -287,6 +287,7 @@ cv::Mat imageDroitesHough(std::vector<LineHough>& listesDroitesHough, int hauteu
 
             x2 = listesDroitesHough.at(i).max;
             y2 = (listesDroitesHough.at(i).ro - (x2 * a)) / b;
+            std::cout << listesDroitesHough.at(i).teta / 2 << ", x" << std::endl;
         }
         /*if(a > 0.7 || a < -0.7)
         {
@@ -358,6 +359,7 @@ cv::Mat seuillageHough(cv::Mat imghoughNS, std::vector<cv::Point2i> &listePoints
 
             if(imgHoughS.at<double>((int)round(roMax), jMax) == 0)
             {
+                std::cout << jMax << ", ";
                 LineHough newLineHough;
                 newLineHough.ro = (int)round(roMax);
                 newLineHough.teta = jMax - 180;
@@ -365,11 +367,13 @@ cv::Mat seuillageHough(cv::Mat imghoughNS, std::vector<cv::Point2i> &listePoints
                 {
                     newLineHough.min = listePoints.at(i).y;
                     newLineHough.max = listePoints.at(i).y;
+                    std::cout << "y" << std::endl;
                 }
                 else
                 {
                     newLineHough.min = listePoints.at(i).x;
                     newLineHough.max = listePoints.at(i).x;
+                    std::cout << "x" << std::endl;
                 }
                 listesDroitesHough.push_back(newLineHough);
                 imgHoughS.at<double>((int)round(roMax), jMax) = 1;
