@@ -18,6 +18,12 @@ struct LineHough{
     int max;
 };
 
+struct CercleHough{
+    int x;
+    int y;
+    int r;
+};
+
 std::string demanderImage();
 
 void calculGradient(cv::Mat& img, cv::Mat& module, cv::Mat& pente, int modeCalculGradient, int nbDirection);
@@ -38,7 +44,7 @@ cv::Mat seuillageHough(cv::Mat imghoughNS, std::vector<cv::Point2i> &listePoints
 cv::Mat imageDroitesHough(std::vector<LineHough>& listesDroitesHough, int hauteur, int largeur);
 cv::Mat imageToutesLesDroitesHough(cv::Mat imghoughNS, int hauteur, int largeur);
 void houghCercle(std::vector<cv::Point2i> &listePoints, int* listeCercles, int sizeX, int sizeY, int sizeR);
-cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR);
+cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR, std::vector<CercleHough> listesCerclesHough);
 
 
 std::vector<cv::Mat> prewittFilter, sobelFilter, kirschFilter, usedFilter;
@@ -62,13 +68,14 @@ int main()
     std::vector<Contour> contours;
     std::vector<cv::Point2i> listePoints;
     std::vector<LineHough> listesDroitesHough;
+    std::vector<CercleHough> listesCerclesHough;
     bool bonChemin;
 
-    int filterType = 0;
+    /*int filterType = 0;
     int gradientType = 0;
     int directionType = 0;
     int seuillageType = 0;
-    int angleAff;
+    int angleAff;*/
     int hauteurValeur;
 
     double m2_1[3][3] = {{-1, -1, -1}, {0, 0, 0}, {1, 1, 1}};
@@ -264,7 +271,7 @@ int main()
             std::cout << "Cercle de Hough" << std::endl;
             houghCercle(listePoints, listeCercles, sizeX, sizeY, sizeR);
             std::cout << "SeuillageCercles " << std::endl;
-            imgCerclesHough = seuillageCercleHough(listeCercles, sizeX, sizeY, sizeR);
+            imgCerclesHough = seuillageCercleHough(listeCercles, sizeX, sizeY, sizeR, listesCerclesHough);
 
             cv::imshow("image cercle hough", norme(imgCerclesHough));
             std::cout << "Cercle de Hough : fini" << std::endl;
@@ -488,19 +495,80 @@ cv::Mat hough(std::vector<cv::Point2i> &listePoints, int hauteur)
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
 
-cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR)
+cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR, std::vector<CercleHough> listesCerclesHough)
 {
     cv::Mat CercleSeuille = cv::Mat(sizeX, sizeY, CV_64FC1);
+    cv::Mat imgAccCercle = cv::Mat(sizeX, sizeY, CV_64FC1);
+
+    std::cout << "Définissez un seuil: " << std::endl;
+    std::string tmp;
+    std::cin >> tmp;
+    int seuil = atof(tmp.c_str());
 
     int max = 0;
 
-    int xMax, yMax, rMax;
+    int xMax, yMax, rMax/*, enregistre*/;
 
-
-    for(unsigned int x = 0; x < sizeX; x++)
-        for(unsigned int y = 0; y < sizeY; y++)
-            for(unsigned int r = 0; r < sizeR; r++)
+    for(int x = 0; x < sizeX; x++)
+        for(int y = 0; y < sizeY; y++)
+            for(int r = 0; r < sizeR; r++)
             {
+                /*enregistre = 1;
+                if((r < sizeR - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[x * sizeR * sizeY + y * sizeR + (r + 1)]))
+                    enregistre = 0;
+                if((r < sizeR - 1) && (y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[x * sizeR * sizeY + (y + 1) * sizeR + (r + 1)]))
+                    enregistre = 0;
+                if((y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[x * sizeR * sizeY + (y + 1) * sizeR + r]))
+                    enregistre = 0;
+                if((r > 0) && (y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[x * sizeR * sizeY + (y + 1) * sizeR + (r - 1)]))
+                    enregistre = 0;
+
+                if((x < sizeX - 1) && (r > 0) && (y > 0) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y - 1) * sizeR + (r - 1)]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (r > 0) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + y * sizeR + (r - 1)]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (r > 0) && (y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y + 1) * sizeR + (r - 1)]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (y > 0) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y - 1) * sizeR + r]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + y * sizeR + r]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y + 1) * sizeR + r]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (r < sizeR - 1) && (y > 0) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y - 1) * sizeR + (r + 1)]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (r < sizeR - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + y * sizeR + (r + 1)]))
+                    enregistre = 0;
+                if((x < sizeX - 1) && (r < sizeR - 1) && (y < sizeY - 1) && (listeCercles[x * sizeR * sizeY + y * sizeR + r] <= listeCercles[(x + 1) * sizeR * sizeY + (y + 1) * sizeR + (r + 1)]))
+                    enregistre = 0;
+
+                if(enregistre)
+                {
+                    std::cout << x << " " << y << " " << r << std::endl;
+                    unsigned int i;
+                    for(i = 0; i < listesCerclesHough.size(); i++)
+                    {
+                        if(listesCerclesHough[i].x == x && listesCerclesHough[i].y == y && listesCerclesHough[i].r == r)
+                            break;
+                    }
+                    std::cout << i << " " << listesCerclesHough.size() << std::endl;
+                    if(i == listesCerclesHough.size())
+                    {
+                        CercleHough monCercle;
+                        monCercle.x = x;
+                        monCercle.y = y;
+                        monCercle.r = r;
+                        listesCerclesHough.push_back(monCercle);
+                    }
+                }*/
+                if(listeCercles[x * sizeR * sizeY + y * sizeR + r] > seuil)
+                {
+                    CercleHough monCercle;
+                    monCercle.x = x;
+                    monCercle.y = y;
+                    monCercle.r = r;
+                    listesCerclesHough.push_back(monCercle);
+                }
                 if(listeCercles[x * sizeR * sizeY + y * sizeR + r] > max)
                 {
                     max = listeCercles[x * sizeR * sizeY + y * sizeR + r];
@@ -510,7 +578,22 @@ cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR)
                 }
             }
 
-    cv::circle(CercleSeuille, cv::Point(yMax, xMax), rMax, cv::Scalar(1.0, 1.0, 1.0), 1, 8, 0);
+    for(unsigned int i = 0; i < listesCerclesHough.size(); i++)
+    {
+        //std::cout << "vfduj " << listesCerclesHough[i].x << " " << listesCerclesHough[i].y << " " << listesCerclesHough[i].r << std::endl;
+        cv::circle(CercleSeuille, cv::Point(listesCerclesHough[i].y, listesCerclesHough[i].x), listesCerclesHough[i].r, cv::Scalar(1.0, 1.0, 1.0), 1, 8, 0);
+    }
+
+    if(max > 20)
+    {
+        cv::circle(CercleSeuille, cv::Point(yMax, xMax), rMax, cv::Scalar(1.0, 1.0, 1.0), 1, 8, 0);
+        for(int x = 0; x < sizeX; x++)
+            for(int y = 0; y < sizeY; y++)
+            {
+                imgAccCercle.at<double>(x, y) = listeCercles[x * sizeR * sizeY + y * sizeR + rMax];
+            }
+        cv::imshow("accumulateur cercle au meme r", norme(imgAccCercle));
+    }
     //std::cout << "vfduj " << xMax << " " << yMax << " " << rMax << std::endl;
     return CercleSeuille;
 
@@ -520,21 +603,14 @@ cv::Mat seuillageCercleHough(int* listeCercles, int sizeX, int sizeY, int sizeR)
 
 void houghCercle(std::vector<cv::Point2i> &listePoints, int* listeCercles, int sizeX, int sizeY, int sizeR)
 {
-    double distance_i, distance_j;
-    for(unsigned int i = 0; i < listePoints.size(); i++)
-        for(unsigned int j = i + 1; j < listePoints.size(); j++)
-            for(unsigned int x = 0; x < sizeX; x++)
-                for(unsigned int y = 0; y < sizeY; y++)
-                {
-                    distance_i = round(sqrt(pow((double)x - (double)listePoints[i].x, 2) + pow((double)y - (double)listePoints[i].y, 2)));
-                    distance_j = round(sqrt(pow((double)x - (double)listePoints[j].x, 2) + pow((double)y - (double)listePoints[j].y, 2)));
-                    if(distance_i == distance_j)
-                    {
-                        //std::cout << "di " << distance_i << std::endl;
-                        listeCercles[x * sizeR * sizeY + y * sizeR + (int)distance_i ]++;
-                    }
-                }
-
+    double distance_i;
+    for(int x = 0; x < sizeX; x++)
+        for(int y = 0; y < sizeY; y++)
+            for(unsigned int i = 0; i < listePoints.size(); i++)
+            {
+                distance_i = round(sqrt(pow((double)x - (double)listePoints[i].x, 2) + pow((double)y - (double)listePoints[i].y, 2)));
+                listeCercles[x * sizeR * sizeY + y * sizeR + (int)distance_i ]++;
+            }
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1347,10 +1423,12 @@ std::string demanderImage()
 {
     std::vector<std::string> images;
 
-    images.push_back("ville.jpg");
+    /*images.push_back("ville.jpg");
     images.push_back("ville2.jpg");
     images.push_back("ville3.jpg");
-    images.push_back("villa.png");
+    images.push_back("villa.png");*/
+    images.push_back("formes_droites-cercle.png");
+    images.push_back("formes_droites-cercles.png");
     images.push_back("formes.png");
     images.push_back("droite.png");
     images.push_back("cercle.png");
